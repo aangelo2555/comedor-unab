@@ -25,9 +25,9 @@
       "active": true,
       "autoSniper": true,
       "targetMeal": "ALMUERZO",
-      "unabToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZHVzdWFyaW8iOiJiZDI3NDNlOC00OTk0LTRhOWItYjA0NC05MzA2MTAwZTM4NjEiLCJ1c2VyX2Z1bGxuYW1lIjoiU0VSTkEgU0lNRU9OLCBBTkdFTE8gVEhPTUFTIiwidXNlcl9uYW1lIjoiMjIyLjAxMTMuMDI4IiwidXNlcl9lbWFpbF91bmFiIjoiYXNlcm5hMjIyQHVuYWIuZWR1LnBlIiwidGlwb19uYW1lIjoiRXN0dWRpYW50ZXMiLCJkYXRhUm9sZXMiOlt7ImNvZGVfbW9kdWxlIjoidGlja2V0cy1kZXYudW5hYi5lZHUucGUiLCJ0aWNrZXRfc2NvcGUiOiJTRUxGIn1dLCJpYXQiOjE3OTA4OTQ4ODksImV4cCI6MTc5MDkyMzY4OX0.sdHuo4KZMjcUii0mww5WNS9Pq5_Krguq732hV7y9UDc",
+      "unabToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZHVzdWFyaW8iOiJiZDI3NDNlOC00OTk0LTRhOWItYjA0NC05MzA2MTAwZTM4NjEiLCJ1c2VyX2Z1bGxuYW1lIjoiU0VSTkEgU0lNRU9OLCBBTkdFTE8gVEhPTUFTIiwidXNlcl9uYW1lIjoiMjIyLjAxMTMuMDI4IiwidXNlcl9lbWFpbF91bmFiIjoiYXNlcm5hMjIyQHVuYWIuZWR1LnBlIiwidGlwb19uYW1lIjoiRXN0dWRpYW50ZXMiLCJkYXRhUm9sZXMiOlt7ImNvZGVfbW9kdWxlIjoidGlja2V0cy1kZXYudW5hYi5lZHUucGUiLCJ0aWNrZXRfc2NvcGUiOiJTRUxGIn1dLCJpYXQiOjE3OTA4OTU5NDEsImV4cCI6MTc5MDkyNDc0MX0.p_O4Bj3Yfg0aufwpOEB954clEnhv5Qh8rFcjvPlsISU",
       "createdAt": "2026-10-01T22:44:18.270Z",
-      "lastLogin": "2026-10-01T22:48:07.910Z"
+      "lastLogin": "2026-10-01T23:05:39.735Z"
     }
   ],
   "reservas": [
@@ -59,6 +59,70 @@
     "soundAlert": true
   },
   "auditLogs": [
+    {
+      "id": "log-1790896954671-98",
+      "time": "6:22:34 p. m.",
+      "date": "2026-10-01",
+      "message": "🎯 Francotirador armado para reservar ALMUERZO del 2026-10-02. Apertura programada a las 17:00:00.",
+      "type": "info",
+      "timestamp": 1790896954672
+    },
+    {
+      "id": "log-1790896954660-695",
+      "time": "6:22:34 p. m.",
+      "date": "2026-10-01",
+      "message": "Francotirador detenido.",
+      "type": "info",
+      "timestamp": 1790896954661
+    },
+    {
+      "id": "log-1790896954000-278",
+      "time": "6:22:34 p. m.",
+      "date": "2026-10-01",
+      "message": "Inicio de sesión de admin (superadmin).",
+      "type": "info",
+      "timestamp": 1790896954008
+    },
+    {
+      "id": "log-1790896202687-250",
+      "time": "6:10:02 p. m.",
+      "date": "2026-10-01",
+      "message": "🎯 Francotirador armado para el 2026-10-01 a las 17:00:00 (Offset: -250ms).",
+      "type": "info",
+      "timestamp": 1790896202687
+    },
+    {
+      "id": "log-1790896202666-869",
+      "time": "6:10:02 p. m.",
+      "date": "2026-10-01",
+      "message": "Francotirador detenido.",
+      "type": "info",
+      "timestamp": 1790896202668
+    },
+    {
+      "id": "log-1790896137814-947",
+      "time": "6:08:57 p. m.",
+      "date": "2026-10-01",
+      "message": "Inicio de sesión de admin (superadmin).",
+      "type": "info",
+      "timestamp": 1790896137815
+    },
+    {
+      "id": "log-1790895938898-187",
+      "time": "6:05:38 p. m.",
+      "date": "2026-10-01",
+      "message": "Inicio de sesión de 222.0113.028 (user).",
+      "type": "info",
+      "timestamp": 1790895938899
+    },
+    {
+      "id": "log-1790895888041-221",
+      "time": "6:04:48 p. m.",
+      "date": "2026-10-01",
+      "message": "Inicio de sesión de 222.0113.028 (user).",
+      "type": "info",
+      "timestamp": 1790895888045
+    },
     {
       "id": "log-1790895078976-50",
       "time": "5:51:18 p. m.",

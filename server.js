@@ -7,7 +7,6 @@
 const http = require('http');
 const fs = require('fs');
 const path = require('path');
-const url = require('url');
 const crypto = require('crypto');
 
 const db = require('./db');
@@ -31,15 +30,17 @@ setInterval(() => {
   }
 }, 10 * 60 * 1000);
 
-// Global Sniper State
+// Global Sniper State (Keep timer IDs outside the object to prevent circular JSON serialization errors)
+let sniperTimerId = null;
+let sniperPollIntervalId = null;
+
 const globalSniper = {
   running: false,
   status: 'IDLE', // IDLE, ARMED, RESERVING, FINISHED
   targetTime: '17:00:00',
-  targetDate: getTodayLimaDate(),
+  targetDate: getTodayLimaDate(1), // Default: Mañana
+  targetMeal: 'ALMUERZO',
   leadTimeMs: 250,
-  timerId: null,
-  pollIntervalId: null,
   lastRunResults: []
 };
 
@@ -77,7 +78,7 @@ function broadcastSSE(event, data) {
   }
 }
 
-function emitLog(message, type = 'info', userId = null) {
+function emitLog(message, type = 'info') {
   const entry = db.addAuditLog(message, type);
   console.log(`[${entry.time}] [${type.toUpperCase()}] ${message}`);
   broadcastSSE('log', entry);
@@ -107,7 +108,7 @@ async function authenticateUserWithUnab(userRecord) {
       lastLogin: new Date().toISOString()
     });
 
-    // Also fetch and update profile
+    // Fetch and update profile details
     const profileRes = await fetchComedorApi('/auth/me', data.accessToken);
     if (profileRes.ok && profileRes.data?.data) {
       const p = profileRes.data.data;
@@ -155,33 +156,41 @@ async function fetchComedorApi(endpoint, token, options = {}) {
 // Helper: Ensure user has valid UNAB token
 async function getValidUnabToken(userRecord) {
   if (userRecord.unabToken) {
-    // Quick test token validity
     const test = await fetchComedorApi('/alumnos/me/elegibilidad', userRecord.unabToken);
     if (test.ok) return userRecord.unabToken;
   }
-  // Re-login
   const auth = await authenticateUserWithUnab(userRecord);
   if (auth.success) return auth.token;
   return null;
 }
 
-// Multi-User Sniper Engine
+// Multi-User Sniper Engine (Non-invasive, Schedule-aware)
 function startGlobalSniper(options = {}) {
   stopGlobalSniper();
 
   globalSniper.targetTime = options.targetTime || '17:00:00';
-  globalSniper.targetDate = options.targetDate || getTodayLimaDate();
+  // If targetDate not specified, default to tomorrow (where lunch is published at 17:00)
+  globalSniper.targetDate = options.targetDate || getTodayLimaDate(1);
+  globalSniper.targetMeal = (options.targetMeal || 'ALMUERZO').toUpperCase();
   globalSniper.leadTimeMs = Number(options.leadTimeMs || 250);
   globalSniper.running = true;
   globalSniper.status = 'ARMED';
   globalSniper.lastRunResults = [];
 
   const [h, m, s] = globalSniper.targetTime.split(':').map(Number);
-  const targetIso = `${globalSniper.targetDate}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}-05:00`;
-  const targetTs = new Date(targetIso).getTime();
-  const msUntilTarget = targetTs - Date.now();
+  // The trigger time happens TODAY at targetTime
+  const todayLima = getTodayLimaDate(0);
+  const triggerIso = `${todayLima}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}-05:00`;
+  let targetTs = new Date(triggerIso).getTime();
 
-  emitLog(`🎯 Francotirador armado para el ${globalSniper.targetDate} a las ${globalSniper.targetTime} (Offset: -${globalSniper.leadTimeMs}ms).`, 'info');
+  let msUntilTarget = targetTs - Date.now();
+  // If 17:00:00 today already passed, trigger targets tomorrow at 17:00
+  if (msUntilTarget < -60000) {
+    targetTs += 24 * 60 * 60 * 1000;
+    msUntilTarget = targetTs - Date.now();
+  }
+
+  emitLog(`🎯 Francotirador armado para reservar ${globalSniper.targetMeal} del ${globalSniper.targetDate}. Apertura programada a las ${globalSniper.targetTime}.`, 'info');
   broadcastSSE('sniper-status', { ...globalSniper });
 
   // Pre-warmup 30s before target
@@ -197,16 +206,16 @@ function startGlobalSniper(options = {}) {
 
   // Trigger high frequency polling right at target - leadTimeMs
   const triggerDelay = Math.max(0, msUntilTarget - globalSniper.leadTimeMs);
-  globalSniper.timerId = setTimeout(() => {
+  sniperTimerId = setTimeout(() => {
     executeMultiUserBurst();
   }, triggerDelay);
 }
 
 function stopGlobalSniper() {
-  if (globalSniper.timerId) clearTimeout(globalSniper.timerId);
-  if (globalSniper.pollIntervalId) clearInterval(globalSniper.pollIntervalId);
-  globalSniper.timerId = null;
-  globalSniper.pollIntervalId = null;
+  if (sniperTimerId) clearTimeout(sniperTimerId);
+  if (sniperPollIntervalId) clearInterval(sniperPollIntervalId);
+  sniperTimerId = null;
+  sniperPollIntervalId = null;
   globalSniper.running = false;
   globalSniper.status = 'IDLE';
   emitLog('Francotirador detenido.', 'info');
@@ -220,26 +229,27 @@ async function executeMultiUserBurst() {
 
   const activeCandidates = db.getAllUsers(false).filter(u => u.active && u.autoSniper && u.role !== 'superadmin');
   if (activeCandidates.length === 0) {
-    emitLog('No hay usuarios configurados con auto-reserva activada.', 'warning');
+    emitLog('No hay alumnos con auto-reserva activa.', 'warning');
     globalSniper.status = 'IDLE';
     globalSniper.running = false;
     broadcastSSE('sniper-status', { ...globalSniper });
     return;
   }
 
-  emitLog(`🚀 ¡DISPARO INICIADO! Buscando cupos para ${activeCandidates.length} alumno(s)...`, 'warning');
+  emitLog(`🚀 ¡DISPARO INICIADO! Sondeando cupos para ${activeCandidates.length} alumno(s)...`, 'warning');
 
   let attempts = 0;
-  const maxAttempts = 50;
+  const maxAttempts = 40;
   let menuFound = null;
 
   const probeUser = activeCandidates[0];
   const probeToken = await getValidUnabToken(probeUser);
 
-  const pollInterval = setInterval(async () => {
+  sniperPollIntervalId = setInterval(async () => {
     attempts++;
     if (attempts > maxAttempts || !globalSniper.running) {
-      clearInterval(pollInterval);
+      clearInterval(sniperPollIntervalId);
+      sniperPollIntervalId = null;
       if (globalSniper.status === 'RESERVING') {
         globalSniper.status = 'FINISHED';
         globalSniper.running = false;
@@ -252,11 +262,12 @@ async function executeMultiUserBurst() {
     try {
       const prog = await fetchComedorApi(`/programacion/me?date=${globalSniper.targetDate}`, probeToken);
       if (prog.ok && Array.isArray(prog.data?.data) && prog.data.data.length > 0) {
-        clearInterval(pollInterval);
+        clearInterval(sniperPollIntervalId);
+        sniperPollIntervalId = null;
         menuFound = prog.data.data;
-        emitLog(`✅ ¡Programación publicada detectada con ${menuFound.length} comidas! Disparando ráfagas...`, 'success');
+        emitLog(`✅ ¡Programación detectada con ${menuFound.length} comidas para ${globalSniper.targetDate}! Enviando reservas...`, 'success');
 
-        // Execute reservations for all candidate students
+        // Execute reservations cleanly per student without saturating connection
         const userPromises = activeCandidates.map(async (student) => {
           const sToken = await getValidUnabToken(student);
           if (!sToken) {
@@ -264,12 +275,13 @@ async function executeMultiUserBurst() {
             return { user: student.username, success: false, error: 'Auth failed' };
           }
 
-          // Target meal
-          let targetItem = menuFound.find(i => (i.tipoComida || '').toUpperCase() === (student.targetMeal || 'ALMUERZO'));
+          // Determine target meal (per student preference or global)
+          const chosenMeal = student.targetMeal || globalSniper.targetMeal || 'ALMUERZO';
+          let targetItem = menuFound.find(i => (i.tipoComida || '').toUpperCase() === chosenMeal.toUpperCase());
           if (!targetItem) targetItem = menuFound[0];
 
-          // Burst of 2-3 requests
-          const burstReqs = [1, 2, 3].map(async () => {
+          // 2 quick burst requests
+          const burstReqs = [1, 2].map(async () => {
             return await fetchComedorApi('/reservas', sToken, {
               method: 'POST',
               body: JSON.stringify({ programacionId: targetItem.id })
@@ -293,10 +305,10 @@ async function executeMultiUserBurst() {
               estado: 'ACTIVA',
               campus: student.campus
             });
-            emitLog(`🎉 ¡¡RESERVA ASEGURADA para ${student.name}!! (${targetItem.tipoComida})`, 'success');
+            emitLog(`🎉 ¡¡RESERVA CONFIRMADA para ${student.name}!! (${targetItem.tipoComida})`, 'success');
             return { user: student.username, success: true, ticket };
           } else {
-            const msg = results[0]?.data?.message || 'Cupos no asignados';
+            const msg = results[0]?.data?.message || 'Cupos no disponibles';
             emitLog(`Resultado para ${student.name}: ${msg}`, 'warning');
             return { user: student.username, success: false, message: msg };
           }
@@ -312,7 +324,7 @@ async function executeMultiUserBurst() {
     } catch (err) {
       console.error('Error en sondeo de francotirador:', err);
     }
-  }, 120);
+  }, 140);
 }
 
 // Request Body Parser (safe and low memory)
@@ -347,7 +359,6 @@ function getSessionFromReq(req) {
   if (authHeader && authHeader.startsWith('Bearer ')) {
     token = authHeader.slice(7).trim();
   } else {
-    // Check cookies
     const cookie = req.headers['cookie'];
     if (cookie) {
       const match = cookie.match(/app-session=([^;]+)/);
@@ -378,8 +389,10 @@ const mimeTypes = {
 
 // HTTP Server
 const server = http.createServer(async (req, res) => {
-  const parsedUrl = url.parse(req.url, true);
-  const pathname = parsedUrl.pathname;
+  // Use WHATWG URL standard (eliminates url.parse deprecation warning)
+  const reqUrl = new URL(req.url, `http://${req.headers.host || 'localhost:3000'}`);
+  const pathname = reqUrl.pathname;
+  const searchParams = reqUrl.searchParams;
 
   // CORS Headers
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -415,7 +428,7 @@ const server = http.createServer(async (req, res) => {
     return sendJson(200, {
       timestamp: Date.now(),
       limaTime: getLimaTimeString(),
-      today: getTodayLimaDate(),
+      today: getTodayLimaDate(0),
       tomorrow: getTodayLimaDate(1),
       hours: limaDate.getHours(),
       minutes: limaDate.getMinutes(),
@@ -436,7 +449,7 @@ const server = http.createServer(async (req, res) => {
 
     let user = db.findUserByUsername(username);
 
-    // If user not in database, attempt direct UNAB login to auto-register student
+    // If student not found locally, attempt UNAB API authentication to auto-enroll
     if (!user) {
       const tempUser = { username, password };
       const auth = await authenticateUserWithUnab(tempUser);
@@ -447,13 +460,13 @@ const server = http.createServer(async (req, res) => {
           role: 'user',
           name: username,
           active: true,
-          autoSniper: true
+          autoSniper: true,
+          targetMeal: 'ALMUERZO'
         });
       } else {
         return sendJson(401, { success: false, error: 'Credenciales inválidas en UNAB o sistema.' });
       }
     } else {
-      // Validate password
       if (user.password !== password) {
         return sendJson(401, { success: false, error: 'Contraseña incorrecta.' });
       }
@@ -463,7 +476,6 @@ const server = http.createServer(async (req, res) => {
       return sendJson(403, { success: false, error: 'Tu cuenta ha sido desactivada por el administrador.' });
     }
 
-    // Authenticate with UNAB API to ensure valid session if student
     if (user.role !== 'superadmin') {
       authenticateUserWithUnab(user).catch(console.error);
     }
@@ -479,7 +491,6 @@ const server = http.createServer(async (req, res) => {
 
     db.addAuditLog(`Inicio de sesión de ${user.username} (${user.role}).`, 'info');
 
-    // Return safe user info
     const { password: _, unabToken: __, ...safeUser } = user;
     return sendJson(200, {
       success: true,
@@ -508,8 +519,6 @@ const server = http.createServer(async (req, res) => {
   }
 
   // --- SUPERADMIN ROUTES ---
-
-  // Admin middleware check
   const session = getSessionFromReq(req);
 
   if (pathname.startsWith('/api/admin/')) {
@@ -519,7 +528,24 @@ const server = http.createServer(async (req, res) => {
 
     // GET /api/admin/users
     if (pathname === '/api/admin/users' && req.method === 'GET') {
-      return sendJson(200, { users: db.getAllUsers(true) });
+      const users = db.getAllUsers(true);
+      const allReservations = db.getAllReservations();
+      const tomorrowStr = getTodayLimaDate(1);
+      const todayStr = getTodayLimaDate(0);
+
+      // Enhance each user with their consolidated reservations activity
+      const enhancedUsers = users.map(u => {
+        const tomorrowRes = allReservations.filter(r => (r.alumnoCodigo === u.username || r.alumnoDni === u.dni) && r.fecha === tomorrowStr);
+        const todayRes = allReservations.filter(r => (r.alumnoCodigo === u.username || r.alumnoDni === u.dni) && r.fecha === todayStr);
+
+        return {
+          ...u,
+          reservasManana: tomorrowRes.map(r => ({ meal: r.tipoComida, status: r.estado, id: r.id })),
+          reservasHoy: todayRes.map(r => ({ meal: r.tipoComida, status: r.estado, id: r.id }))
+        };
+      });
+
+      return sendJson(200, { users: enhancedUsers });
     }
 
     // POST /api/admin/users
@@ -561,11 +587,6 @@ const server = http.createServer(async (req, res) => {
       return sendJson(200, { reservas: db.getAllReservations() });
     }
 
-    // GET /api/admin/logs
-    if (pathname === '/api/admin/logs' && req.method === 'GET') {
-      return sendJson(200, { logs: db.getAuditLogs() });
-    }
-
     // GET /api/admin/metrics (RAM, CPU, Uptime)
     if (pathname === '/api/admin/metrics' && req.method === 'GET') {
       const mem = process.memoryUsage();
@@ -586,8 +607,11 @@ const server = http.createServer(async (req, res) => {
 
     // POST /api/admin/sniper/mass-fire
     if (pathname === '/api/admin/sniper/mass-fire' && req.method === 'POST') {
+      const body = await parseJsonBody(req);
+      if (body.targetMeal) globalSniper.targetMeal = body.targetMeal;
+      if (body.targetDate) globalSniper.targetDate = body.targetDate;
       executeMultiUserBurst();
-      return sendJson(200, { success: true, message: 'Disparo masivo lanzado.' });
+      return sendJson(200, { success: true, message: `Disparo lanzado para ${globalSniper.targetMeal}.` });
     }
   }
 
@@ -595,7 +619,7 @@ const server = http.createServer(async (req, res) => {
 
   // GET /api/comedor/programacion?date=YYYY-MM-DD
   if (pathname === '/api/comedor/programacion' && req.method === 'GET') {
-    const dateParam = parsedUrl.query.date || getTodayLimaDate();
+    const dateParam = searchParams.get('date') || getTodayLimaDate(0);
     let token = null;
 
     if (session && session.userId) {
@@ -603,14 +627,13 @@ const server = http.createServer(async (req, res) => {
       if (u) token = await getValidUnabToken(u);
     }
 
-    // Fallback token from any student in db
     if (!token) {
       const defaultStudent = db.getAllUsers(false).find(u => u.role !== 'superadmin');
       if (defaultStudent) token = await getValidUnabToken(defaultStudent);
     }
 
     if (!token) {
-      return sendJson(503, { error: 'No hay credenciales válidas de estudiante para consultar la API de UNAB.' });
+      return sendJson(503, { error: 'No hay credenciales válidas para consultar la API de UNAB.' });
     }
 
     const result = await fetchComedorApi(`/programacion/me?date=${dateParam}`, token);
@@ -628,10 +651,9 @@ const server = http.createServer(async (req, res) => {
     const token = await getValidUnabToken(user);
     if (!token) return sendJson(401, { error: 'Error de sesión en UNAB.' });
 
-    const fechaParam = parsedUrl.query.fecha || getTodayLimaDate();
+    const fechaParam = searchParams.get('fecha') || getTodayLimaDate(0);
     const result = await fetchComedorApi(`/reservas/me?fecha=${fechaParam}`, token);
 
-    // Save to local history if valid
     if (result.ok && Array.isArray(result.data?.data)) {
       result.data.data.forEach(t => db.recordReservation(t));
     }
@@ -652,7 +674,7 @@ const server = http.createServer(async (req, res) => {
     const progId = body.programacionId;
     if (!progId) return sendJson(400, { error: 'programacionId es obligatorio' });
 
-    emitLog(`Intento de reserva manual para ${user.name} (Programación ID: ${progId})...`, 'info');
+    emitLog(`Intento de reserva manual para ${user.name} (ID: ${progId})...`, 'info');
     const result = await fetchComedorApi('/reservas', token, {
       method: 'POST',
       body: JSON.stringify({ programacionId: progId })
@@ -720,13 +742,13 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/sniper/start' && req.method === 'POST') {
     const body = await parseJsonBody(req);
     startGlobalSniper(body);
-    return sendJson(200, { success: true, sniper: globalSniper });
+    return sendJson(200, { success: true, sniper: { ...globalSniper } });
   }
 
   // POST /api/sniper/stop
   if (pathname === '/api/sniper/stop' && req.method === 'POST') {
     stopGlobalSniper();
-    return sendJson(200, { success: true, sniper: globalSniper });
+    return sendJson(200, { success: true, sniper: { ...globalSniper } });
   }
 
   // --- STATIC FILE SERVING ---
@@ -766,6 +788,6 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`📡 Servidor activo en puerto: ${PORT} (0.0.0.0)`);
   console.log(`⚡ Consumo inicial de RAM: ${(mem.rss / 1024 / 1024).toFixed(2)} MB`);
   console.log(`🕒 Hora Perú: ${getLimaTimeString()} (America/Lima)`);
-  console.log(`🚂 Listo para despliegue en Railway (Procfile/Dockerfile)`);
+  console.log(`🚂 Listo para despliegue en Railway`);
   console.log(`======================================================\n`);
 });

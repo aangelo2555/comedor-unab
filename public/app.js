@@ -8,12 +8,16 @@ let serverOffset = 0;
 let studentTickets = [];
 let adminUsersList = [];
 
-// Toast Helper
+// White Minimalist Toast Notifications (Point 3)
 function showToast(message, type = 'info') {
   const shelf = document.getElementById('toastShelf');
+  if (!shelf) return;
   const toast = document.createElement('div');
-  toast.className = 'toast-msg';
-  toast.innerHTML = `<span>${type === 'success' ? '✅' : type === 'error' ? '❌' : 'ℹ️'}</span> <span>${message}</span>`;
+  toast.className = `toast-msg ${type}`;
+  toast.innerHTML = `
+    <span>${type === 'success' ? '✅' : type === 'error' ? '❌' : type === 'warning' ? '⚠️' : 'ℹ️'}</span>
+    <span>${message}</span>
+  `;
   shelf.appendChild(toast);
   setTimeout(() => {
     toast.style.opacity = '0';
@@ -32,23 +36,6 @@ function closeModal(id) {
   if (el) el.classList.remove('active');
 }
 
-// Quick Fill helper for testing
-function fillLogin(u, p) {
-  document.getElementById('loginUsername').value = u;
-  document.getElementById('loginPassword').value = p;
-}
-
-// Append Terminal Line
-function logLine(targetId, time, message, type = 'info') {
-  const term = document.getElementById(targetId);
-  if (!term) return;
-  const line = document.createElement('div');
-  line.className = 'terminal-line';
-  line.innerHTML = `<span class="terminal-time">[${time || new Date().toLocaleTimeString('es-PE')}]</span><span class="terminal-${type}">${message}</span>`;
-  term.appendChild(line);
-  term.scrollTop = term.scrollHeight;
-}
-
 // Auth Headers Generator
 function authHeaders() {
   const token = localStorage.getItem('unab_session_token');
@@ -58,7 +45,7 @@ function authHeaders() {
   };
 }
 
-// Real-Time Clock & 17:00:00 Countdown
+// Real-Time Clock & 17:00:00 Countdown (Point 7)
 function tickClock() {
   const now = new Date(Date.now() + serverOffset);
   const timeStr = now.toLocaleTimeString('en-GB', { timeZone: 'America/Lima', hour12: false });
@@ -67,19 +54,22 @@ function tickClock() {
   const clockEl = document.getElementById('liveClockText');
   if (clockEl) clockEl.textContent = `${timeStr}${msStr}`;
 
-  // Countdown to 17:00:00
-  const dateVal = document.getElementById('userTargetDate')?.value || now.toISOString().slice(0, 10);
-  const targetTime = '17:00:00';
-  const targetTs = new Date(`${dateVal}T${targetTime}-05:00`).getTime();
-  const diff = targetTs - now.getTime();
+  // Official UNAB opening logic:
+  // Today at 17:00:00 is the opening for tomorrow's tickets!
+  const todayStr = now.toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
+  let targetTs = new Date(`${todayStr}T17:00:00-05:00`).getTime();
+  let diff = targetTs - now.getTime();
 
-  let h = '00', m = '00', s = '00', ms = '.000';
-  if (diff > 0) {
-    h = String(Math.floor(diff / 3600000)).padStart(2, '0');
-    m = String(Math.floor((diff % 3600000) / 60000)).padStart(2, '0');
-    s = String(Math.floor((diff % 60000) / 1000)).padStart(2, '0');
-    ms = '.' + String(diff % 1000).padStart(3, '0');
+  // If 17:00:00 today has passed, countdown to tomorrow's 17:00:00
+  if (diff <= 0) {
+    targetTs += 24 * 60 * 60 * 1000;
+    diff = targetTs - now.getTime();
   }
+
+  const h = String(Math.floor(diff / 3600000)).padStart(2, '0');
+  const m = String(Math.floor((diff % 3600000) / 60000)).padStart(2, '0');
+  const s = String(Math.floor((diff % 60000) / 1000)).padStart(2, '0');
+  const ms = '.' + String(diff % 1000).padStart(3, '0');
 
   // Update Student Countdown
   const uh = document.getElementById('userCdHours');
@@ -110,9 +100,9 @@ async function syncTime() {
     serverOffset = (data.timestamp + latency / 2) - Date.now();
 
     // Default dates
-    const dDate = document.getElementById('userTargetDate');
+    const adminDate = document.getElementById('adminSniperDateInput');
     const mDate = document.getElementById('menuFilterDate');
-    if (dDate && !dDate.value) dDate.value = data.today;
+    if (adminDate && !adminDate.value) adminDate.value = data.tomorrow;
     if (mDate && !mDate.value) mDate.value = data.today;
   } catch (err) {
     console.error('Error syncing time:', err);
@@ -217,7 +207,7 @@ function initAdminPanel() {
   loadAdminUsers();
   loadAdminReservas();
   loadAdminMetrics();
-  setInterval(loadAdminMetrics, 10000); // Check RAM every 10s
+  setInterval(loadAdminMetrics, 10000);
 }
 
 async function loadAdminUsers() {
@@ -233,30 +223,48 @@ async function loadAdminUsers() {
   }
 }
 
+// Render Admin Users Table with Consolidated Reservation Column (Point 8)
 function renderAdminUsersTable(users) {
   const tbody = document.getElementById('adminUsersTableBody');
   tbody.innerHTML = '';
 
   users.forEach(u => {
     const tr = document.createElement('tr');
+
+    // Consolidated single-column reservation management
+    const mananaStatus = (u.reservasManana && u.reservasManana.length > 0)
+      ? u.reservasManana.map(r => `<span class="badge badge-success">Mañana: ${r.meal} (${r.status})</span>`).join(' ')
+      : '<span style="color: var(--slate-500); font-size: 0.78rem;">Mañana: Sin reserva</span>';
+
+    const hoyStatus = (u.reservasHoy && u.reservasHoy.length > 0)
+      ? u.reservasHoy.map(r => `<span class="badge badge-neutral">Hoy: ${r.meal}</span>`).join(' ')
+      : '<span style="color: var(--slate-500); font-size: 0.78rem;">Hoy: Sin reserva</span>';
+
+    const combinedHistory = `
+      <div style="display: flex; flex-direction: column; gap: 0.25rem;">
+        <div>${mananaStatus}</div>
+        <div>${hoyStatus}</div>
+      </div>
+    `;
+
     tr.innerHTML = `
-      <td><strong>${u.username}</strong></td>
-      <td>${u.name}</td>
+      <td>
+        <strong>${u.name || u.username}</strong>
+        <div style="font-size: 0.75rem; color: var(--slate-500); font-family: var(--font-mono);">${u.username}</div>
+      </td>
       <td>${u.dni || '-'}</td>
       <td>${(u.campus || 'LA_FLORIDA').replace('_', ' ')}</td>
-      <td><span class="badge badge-neutral">${u.targetMeal || 'ALMUERZO'}</span></td>
+      <td>${combinedHistory}</td>
       <td>
-        <input type="checkbox" ${u.autoSniper ? 'checked' : ''} onchange="toggleUserSniper('${u.id}', this.checked)" title="Activar/desactivar francotirador 17:00">
-      </td>
-      <td>
-        <span class="badge ${u.active ? 'badge-success' : 'badge-danger'}">
-          ${u.active ? 'Activo' : 'Inactivo'}
-        </span>
+        <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer; font-size: 0.8rem;">
+          <input type="checkbox" ${u.autoSniper ? 'checked' : ''} onchange="toggleUserSniper('${u.id}', this.checked)">
+          <span>${u.autoSniper ? 'Activo' : 'Pausado'}</span>
+        </label>
       </td>
       <td>
         ${u.role !== 'superadmin' ? `
           <button class="btn btn-danger btn-sm" onclick="deleteUserPrompt('${u.id}', '${u.username}')">Eliminar</button>
-        ` : '<span style="color: #94a3b8; font-size: 0.75rem;">SuperAdmin</span>'}
+        ` : '<span style="color: #94a3b8; font-size: 0.75rem; font-weight: 600;">SuperAdmin</span>'}
       </td>
     `;
     tbody.appendChild(tr);
@@ -270,7 +278,7 @@ async function toggleUserSniper(userId, state) {
       headers: authHeaders(),
       body: JSON.stringify({ autoSniper: state })
     });
-    showToast('Preferencia de francotirador actualizada', 'info');
+    showToast('Auto-reserva del alumno actualizada', 'success');
   } catch {}
 }
 
@@ -376,34 +384,43 @@ async function loadAdminMetrics() {
   } catch {}
 }
 
-// Admin Mass Sniper Fire
-document.getElementById('btnAdminForceFire').addEventListener('click', async () => {
-  if (!confirm('¿Deseas disparar las solicitudes de reserva de almuerzo ahora mismo para todos los alumnos activos?')) return;
-  try {
-    showToast('Lanzando ráfagas de reserva...', 'info');
-    const res = await fetch('/api/admin/sniper/mass-fire', { method: 'POST', headers: authHeaders() });
-    const data = await res.json();
-    if (res.ok) {
-      showToast('Disparo masivo ejecutado con éxito.', 'success');
-    }
-  } catch (err) {
-    showToast('Error en disparo masivo', 'error');
-  }
-});
+// Non-Invasive Mass Sniper (Point 9)
+document.getElementById('btnAdminArmSniper').addEventListener('click', async () => {
+  const meal = document.getElementById('adminSniperMealSelect').value;
+  const date = document.getElementById('adminSniperDateInput').value;
 
-document.getElementById('btnAdminToggleSniper').addEventListener('click', async () => {
   try {
     const res = await fetch('/api/sniper/start', {
       method: 'POST',
       headers: authHeaders(),
-      body: JSON.stringify({ targetTime: '17:00:00' })
+      body: JSON.stringify({ targetTime: '17:00:00', targetMeal: meal, targetDate: date })
     });
     if (res.ok) {
-      showToast('Francotirador masivo ARMADO para las 17:00:00', 'success');
+      showToast(`Francotirador armado para ${meal} del ${date} a las 17:00:00`, 'success');
       document.getElementById('adminSniperStatusBadge').className = 'badge badge-success';
-      document.getElementById('adminSniperStatusBadge').textContent = 'ARMADO PARA LAS 17:00';
+      document.getElementById('adminSniperStatusBadge').textContent = `ARMADO PARA ${meal} (17:00)`;
     }
   } catch {}
+});
+
+document.getElementById('btnAdminForceFire').addEventListener('click', async () => {
+  const meal = document.getElementById('adminSniperMealSelect').value;
+  const date = document.getElementById('adminSniperDateInput').value;
+  if (!confirm(`¿Disparar reserva para ${meal} del ${date} ahora?`)) return;
+
+  try {
+    showToast(`Ejecutando disparo para ${meal}...`, 'info');
+    const res = await fetch('/api/admin/sniper/mass-fire', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ targetMeal: meal, targetDate: date })
+    });
+    if (res.ok) {
+      showToast('Disparo ejecutado con éxito.', 'success');
+    }
+  } catch (err) {
+    showToast('Error en disparo', 'error');
+  }
 });
 
 // --------------------------------------------------------------------------
@@ -415,6 +432,24 @@ function initStudentPanel(user) {
   document.getElementById('fichaCodigo').textContent = user.username;
   document.getElementById('fichaDni').textContent = user.dni || '76448557';
   document.getElementById('fichaSede').textContent = (user.campus || 'LA_FLORIDA').replace('_', ' ');
+
+  // Set target meal from user profile
+  const mealSelect = document.getElementById('userTargetMeal');
+  if (mealSelect && user.targetMeal) {
+    mealSelect.value = user.targetMeal;
+  }
+
+  // Automatic save on change (Point 5)
+  mealSelect.onchange = async () => {
+    try {
+      await fetch(`/api/admin/users/${currentAuth.id}`, {
+        method: 'PUT',
+        headers: authHeaders(),
+        body: JSON.stringify({ targetMeal: mealSelect.value, autoSniper: true })
+      });
+      showToast(`Auto-reserva actualizada: ${mealSelect.value} para mañana`, 'success');
+    } catch {}
+  };
 
   loadStudentAttendance();
   loadStudentMenu();
@@ -447,7 +482,7 @@ async function loadStudentMenu() {
       container.innerHTML = `
         <div class="card" style="grid-column: 1 / -1; text-align: center; padding: 2.5rem;">
           <h3 style="color: var(--slate-800); margin-bottom: 0.5rem;">Sin platos disponibles para el ${dateVal}</h3>
-          <p style="color: var(--slate-500); font-size: 0.85rem;">La programación para esta fecha aún no ha sido abierta. Los cupos se abren a las <strong>17:00:00 (5:00 PM)</strong>.</p>
+          <p style="color: var(--slate-500); font-size: 0.85rem;">Los cupos para este día se abren puntualmente a las <strong>17:00:00 (5:00 PM)</strong>.</p>
         </div>
       `;
       return;
@@ -469,7 +504,7 @@ async function loadStudentMenu() {
           <h3 style="font-size: 1.15rem; margin: 0.6rem 0 0.2rem 0; color: var(--navy-primary);">
             ${item.tipoComida === 'ALMUERZO' ? 'Almuerzo Universitario' : item.tipoComida === 'CENA' ? 'Cena Estudiantil' : 'Desayuno'}
           </h3>
-          <p style="font-size: 0.8rem; color: var(--slate-500);">Horario: ${item.horaInicio?.slice(0,5)} - ${item.horaFin?.slice(0,5)}</p>
+          <p style="font-size: 0.8rem; color: var(--slate-500);">Horario de atención: ${item.horaInicio?.slice(0,5)} - ${item.horaFin?.slice(0,5)}</p>
 
           <div class="meal-quota-row">
             <span>Cupos Libres:</span>
@@ -478,7 +513,7 @@ async function loadStudentMenu() {
         </div>
 
         <button class="btn ${isExhausted ? 'btn-secondary' : 'btn-primary'}" style="width: 100%; margin-top: 0.5rem;" ${isExhausted ? 'disabled' : ''} onclick="reserveMeal(${item.id}, '${item.tipoComida}')">
-          ${isExhausted ? 'Agotado' : `Reservar ${item.tipoComida}`}
+          ${isExhausted ? 'Sin platos disponibles' : `Reservar ${item.tipoComida}`}
         </button>
       `;
       container.appendChild(card);
@@ -505,7 +540,6 @@ async function reserveMeal(programacionId, tipoComida) {
       showToast('¡Reserva creada exitosamente!', 'success');
       loadStudentMenu();
       loadStudentTickets();
-      // Go to tickets tab
       document.querySelector('[data-target="student-tab-tickets"]').click();
     } else {
       showToast(data.message || data.error || 'Error al reservar', 'error');
@@ -515,10 +549,10 @@ async function reserveMeal(programacionId, tipoComida) {
   }
 }
 
-// Student Tickets & QR Codes
+// Student Tickets & QR Codes (Image 3)
 async function loadStudentTickets() {
   const container = document.getElementById('studentTicketsHolder');
-  const dateVal = document.getElementById('userTargetDate')?.value || new Date().toISOString().slice(0, 10);
+  const dateVal = new Date(Date.now() + serverOffset).toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
   container.innerHTML = `<div style="text-align: center; color: var(--slate-500); padding: 1.5rem;">Cargando tus tickets...</div>`;
 
   try {
@@ -535,7 +569,7 @@ async function loadStudentTickets() {
       container.innerHTML = `
         <div class="card" style="text-align: center; padding: 2.5rem;">
           <p style="color: var(--slate-700); font-weight: 600;">No tienes reservas registradas para hoy.</p>
-          <p style="color: var(--slate-500); font-size: 0.85rem; margin-top: 0.25rem;">Usa el Francotirador a las 17:00:00 o la reserva manual.</p>
+          <p style="color: var(--slate-500); font-size: 0.85rem; margin-top: 0.25rem;">Tu auto-reserva está programada para las 17:00:00 o puedes usar la reserva manual.</p>
         </div>
       `;
       return;
@@ -549,7 +583,7 @@ async function loadStudentTickets() {
       wrap.innerHTML = `
         <div class="qr-box">
           <div class="qr-canvas-holder" id="${qrId}"></div>
-          <span style="font-size: 0.72rem; color: var(--navy-primary); font-weight: 700; margin-top: 0.4rem;">QR DE ATENCIÓN</span>
+          <span style="font-size: 0.72rem; color: var(--navy-primary); font-weight: 700; margin-top: 0.4rem;">QR OFICIAL</span>
         </div>
 
         <div style="flex: 1; min-width: 240px;">
@@ -558,12 +592,12 @@ async function loadStudentTickets() {
             <span class="badge ${t.estado === 'ACTIVA' ? 'badge-success' : 'badge-danger'}">${t.estado}</span>
           </div>
 
-          <h3 style="font-size: 1.25rem; color: var(--slate-900); font-weight: 700;">Ticket de Almuerzo</h3>
-          <p style="font-size: 0.85rem; color: var(--slate-500);">Fecha: ${t.fecha} · Hora: ${t.horaReserva || '17:00'}</p>
+          <h3 style="font-size: 1.25rem; color: var(--slate-900); font-weight: 700;">Ticket de Comedor</h3>
+          <p style="font-size: 0.85rem; color: var(--slate-500);">Fecha: ${t.fecha} · Hora de Reserva: ${t.horaReserva || '17:00'}</p>
           <p style="font-size: 0.85rem; color: var(--slate-600); margin-top: 0.25rem;">Alumno: <strong>${t.alumnoNombre || currentAuth.name}</strong></p>
           <p style="font-size: 0.85rem; color: var(--slate-600);">DNI: <strong>${t.alumnoDni || currentAuth.dni}</strong> · Sede: ${(t.campus || 'LA_FLORIDA').replace('_', ' ')}</p>
 
-          <div style="display: flex; gap: 0.5rem; margin-top: 1rem;">
+          <div style="display: flex; gap: 0.5rem; margin-top: 1rem; flex-wrap: wrap;">
             <button class="btn btn-primary btn-sm" onclick="openDigitalPass('${t.id}')">
               📱 Ver Pase Completo
             </button>
@@ -609,14 +643,14 @@ async function cancelStudentReservation(id) {
       headers: authHeaders()
     });
     if (res.ok) {
-      showToast('Reserva anulada correctamente', 'info');
+      showToast('Reserva anulada correctamente. Cupo liberado.', 'info');
       loadStudentTickets();
       loadStudentMenu();
     }
   } catch {}
 }
 
-// Digital Pass Modal
+// Digital Pass Modal (Image 3)
 function openDigitalPass(id) {
   const t = studentTickets.find(x => x.id === id);
   if (!t) return;
@@ -640,27 +674,17 @@ function openDigitalPass(id) {
   openModal('modalDigitalPass');
 }
 
-// Student save sniper preferences
-document.getElementById('btnUserSaveSniper')?.addEventListener('click', async () => {
-  const targetMeal = document.getElementById('userTargetMeal').value;
-  try {
-    await fetch(`/api/admin/users/${currentAuth.id}`, {
-      method: 'PUT',
-      headers: authHeaders(),
-      body: JSON.stringify({ autoSniper: true, targetMeal })
-    });
-    showToast('Preferencia de auto-reserva guardada.', 'success');
-  } catch {}
-});
-
-// SSE Events stream
+// SSE Events stream for notification toasts
 function setupSSE() {
   const src = new EventSource('/api/events');
   src.addEventListener('log', (e) => {
     try {
       const data = JSON.parse(e.data);
-      logLine('adminTerminal', data.time, data.message, data.type);
-      logLine('studentTerminal', data.time, data.message, data.type);
+      if (data.type === 'success') {
+        showToast(data.message, 'success');
+      } else if (data.type === 'error') {
+        showToast(data.message, 'error');
+      }
     } catch {}
   });
 
@@ -668,6 +692,7 @@ function setupSSE() {
     showToast('🎯 Ráfaga de reservas de las 17:00 finalizada.', 'success');
     if (currentAuth?.role === 'superadmin') {
       loadAdminReservas();
+      loadAdminUsers();
     } else {
       loadStudentTickets();
       loadStudentMenu();
@@ -693,7 +718,7 @@ document.addEventListener('click', (e) => {
 document.addEventListener('DOMContentLoaded', () => {
   syncTime();
   setInterval(syncTime, 60000);
-  setInterval(tickClock, 45); // smooth clock ticks
+  setInterval(tickClock, 45);
   checkAuthSession();
   setupSSE();
 });
