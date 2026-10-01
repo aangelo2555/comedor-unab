@@ -1,0 +1,79 @@
+{
+  "users": [
+    {
+      "id": "admin-01",
+      "username": "admin",
+      "password": "admin12345",
+      "role": "superadmin",
+      "name": "Super Administrador Comedor",
+      "dni": "00000000",
+      "campus": "LA_FLORIDA",
+      "active": true,
+      "autoSniper": false,
+      "targetMeal": "ALMUERZO",
+      "unabToken": "",
+      "createdAt": "2026-10-01T22:44:18.232Z"
+    },
+    {
+      "id": "usr-angelo",
+      "username": "222.0113.028",
+      "password": "Dotamipasion12345",
+      "role": "user",
+      "name": "SERNA SIMEON, ANGELO THOMAS",
+      "dni": "76448557",
+      "campus": "LA_FLORIDA",
+      "active": true,
+      "autoSniper": true,
+      "targetMeal": "ALMUERZO",
+      "unabToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZHVzdWFyaW8iOiJiZDI3NDNlOC00OTk0LTRhOWItYjA0NC05MzA2MTAwZTM4NjEiLCJ1c2VyX2Z1bGxuYW1lIjoiU0VSTkEgU0lNRU9OLCBBTkdFTE8gVEhPTUFTIiwidXNlcl9uYW1lIjoiMjIyLjAxMTMuMDI4IiwidXNlcl9lbWFpbF91bmFiIjoiYXNlcm5hMjIyQHVuYWIuZWR1LnBlIiwidGlwb19uYW1lIjoiRXN0dWRpYW50ZXMiLCJkYXRhUm9sZXMiOlt7ImNvZGVfbW9kdWxlIjoidGlja2V0cy1kZXYudW5hYi5lZHUucGUiLCJ0aWNrZXRfc2NvcGUiOiJTRUxGIn1dLCJpYXQiOjE3OTA4OTQ3MTgsImV4cCI6MTc5MDkyMzUxOH0.c_z1rug-TuXtfTXGPRjcxQYIxHnDDi9vJSCaEGwfmWs",
+      "createdAt": "2026-10-01T22:44:18.270Z",
+      "lastLogin": "2026-10-01T22:45:17.190Z"
+    }
+  ],
+  "reservas": [
+    {
+      "id": "1b662117-0450-443c-85e4-1db1cc53cc7a",
+      "programacionId": 186,
+      "alumnoDni": "76448557",
+      "tipoBecario": "LIBRE",
+      "estado": "ACTIVA",
+      "qrToken": "00ef27f69f198622059f1f03560ed5b1f0b4be5c6ce36030be4e1f183de2c149",
+      "createdAt": "2026-10-01T22:00:04.832Z",
+      "alumnoCodigo": "222.0113.028",
+      "tipoComida": "CENA",
+      "fecha": "2026-10-01",
+      "horaReserva": "17:00:04",
+      "alumnoNombre": "SERNA SIMEON, ANGELO THOMAS",
+      "campus": "LA_FLORIDA",
+      "clasificacionAlumno": "LIBRE",
+      "tipoCupoConsumido": "LIBRE",
+      "origen": "ALUMNO",
+      "eventoId": null,
+      "recordedAt": "2026-10-01T22:45:18.682Z"
+    }
+  ],
+  "settings": {
+    "sniperTime": "17:00:00",
+    "leadTimeMs": 250,
+    "concurrency": 3,
+    "soundAlert": true
+  },
+  "auditLogs": [
+    {
+      "id": "log-1790894716885-364",
+      "time": "5:45:16 p. m.",
+      "date": "2026-10-01",
+      "message": "Inicio de sesión de admin (superadmin).",
+      "type": "info",
+      "timestamp": 1790894716886
+    },
+    {
+      "id": "log-1790894715268-152",
+      "time": "5:45:15 p. m.",
+      "date": "2026-10-01",
+      "message": "Inicio de sesión de 222.0113.028 (user).",
+      "type": "info",
+      "timestamp": 1790894715278
+    }
+  ]
+}

@@ -1,0 +1,22 @@
+{
+  "username": "222.0113.028",
+  "password": "Dotamipasion12345",
+  "accessToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZHVzdWFyaW8iOiJiZDI3NDNlOC00OTk0LTRhOWItYjA0NC05MzA2MTAwZTM4NjEiLCJ1c2VyX2Z1bGxuYW1lIjoiU0VSTkEgU0lNRU9OLCBBTkdFTE8gVEhPTUFTIiwidXNlcl9uYW1lIjoiMjIyLjAxMTMuMDI4IiwidXNlcl9lbWFpbF91bmFiIjoiYXNlcm5hMjIyQHVuYWIuZWR1LnBlIiwidGlwb19uYW1lIjoiRXN0dWRpYW50ZXMiLCJkYXRhUm9sZXMiOlt7ImNvZGVfbW9kdWxlIjoidGlja2V0cy1kZXYudW5hYi5lZHUucGUiLCJ0aWNrZXRfc2NvcGUiOiJTRUxGIn1dLCJpYXQiOjE3OTA4OTI4NDIsImV4cCI6MTc5MDkyMTY0Mn0.MLxvIi4Q68h0LAGzBW67PxLsJ07ORSGD1IgUEttLWys",
+  "iduser": "bd2743e8-4994-4a9b-b044-9306100e3861",
+  "student": {
+    "dni": "76448557",
+    "codigo": "222.0113.028",
+    "nombre": "SERNA SIMEON, ANGELO THOMAS",
+    "email": "aserna222@unab.edu.pe",
+    "tipoBecario": "LIBRE",
+    "campus": "LA_FLORIDA"
+  },
+  "sniper": {
+    "targetTime": "17:00:00",
+    "targetMeal": "ALMUERZO",
+    "leadTimeMs": 250,
+    "concurrency": 3,
+    "autoLogin": true,
+    "soundAlert": true
+  }
+}

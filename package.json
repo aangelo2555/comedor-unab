@@ -1,0 +1,15 @@
+{
+  "name": "comedor-unab-sistema",
+  "version": "1.0.0",
+  "description": "Sistema de reservas de almuerzo y francotirador para Comedor UNAB desplegable en Railway",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "author": "Angelo Thomas Serna Simeon",
+  "license": "ISC",
+  "private": true
+}

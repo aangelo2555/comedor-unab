@@ -1,0 +1,551 @@
+/* --------------------------------------------------------------------------
+   COMEDOR UNAB - MINIMALIST CLEAN DESIGN SYSTEM
+   Professional, Executive, Non-Neon, Low Memory Footprint
+   -------------------------------------------------------------------------- */
+
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
+
+:root {
+  /* Palette: Clean Corporate Slate & UNAB Navy (Zero Neon) */
+  --bg-app: #f8fafc;
+  --bg-surface: #ffffff;
+  --bg-subtle: #f1f5f9;
+  --border-subtle: #e2e8f0;
+  --border-strong: #cbd5e1;
+
+  --navy-primary: #07406b;
+  --navy-hover: #0a4f84;
+  --navy-subtle: #eef5fc;
+
+  --slate-900: #0f172a;
+  --slate-800: #1e293b;
+  --slate-700: #334155;
+  --slate-600: #475569;
+  --slate-500: #64748b;
+  --slate-400: #94a3b8;
+
+  --emerald: #059669;
+  --emerald-subtle: #ecfdf5;
+  --amber: #d97706;
+  --amber-subtle: #fffbeb;
+  --rose: #dc2626;
+  --rose-subtle: #fef2f2;
+
+  --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-full: 9999px;
+
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
+}
+
+/* Reset & Global */
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-sans);
+  background-color: var(--bg-app);
+  color: var(--slate-800);
+  line-height: 1.5;
+  min-height: 100vh;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* App Container */
+.app-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 1.25rem 1.5rem 4rem 1.5rem;
+}
+
+/* Header */
+.navbar {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-lg);
+  padding: 0.85rem 1.5rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 1rem;
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 1.5rem;
+}
+
+.brand {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+}
+
+.brand-logo {
+  height: 38px;
+  width: auto;
+}
+
+.brand-info h1 {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: var(--navy-primary);
+  line-height: 1.2;
+}
+
+.brand-info p {
+  font-size: 0.78rem;
+  color: var(--slate-500);
+}
+
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  flex-wrap: wrap;
+}
+
+/* Time & Telemetry Pills */
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.35rem 0.75rem;
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-full);
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--slate-700);
+}
+
+.status-pill.time {
+  font-family: var(--font-mono);
+  color: var(--navy-primary);
+  background: var(--navy-subtle);
+  border-color: rgba(7, 64, 107, 0.15);
+}
+
+.status-pill.admin {
+  background: #f3e8ff;
+  border-color: #e9d5ff;
+  color: #7e22ce;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--emerald);
+}
+
+/* Navigation Tabs */
+.tabs-header {
+  display: flex;
+  gap: 0.4rem;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 1.5rem;
+  overflow-x: auto;
+}
+
+.tab-link {
+  padding: 0.65rem 1.15rem;
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: var(--slate-600);
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  white-space: nowrap;
+}
+
+.tab-link:hover {
+  color: var(--navy-primary);
+}
+
+.tab-link.active {
+  color: var(--navy-primary);
+  border-bottom-color: var(--navy-primary);
+  background: rgba(7, 64, 107, 0.03);
+}
+
+/* Views Container */
+.tab-pane {
+  display: none;
+}
+
+.tab-pane.active {
+  display: block;
+}
+
+/* Cards & Grid */
+.card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 1.35rem;
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 1.25rem;
+}
+
+.card-title {
+  font-size: 1.05rem;
+  font-weight: 700;
+  color: var(--slate-900);
+  margin-bottom: 0.35rem;
+}
+
+.card-desc {
+  font-size: 0.82rem;
+  color: var(--slate-500);
+  margin-bottom: 1rem;
+}
+
+.grid-2 {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1.25rem;
+}
+
+.grid-3 {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(290px, 1fr));
+  gap: 1.25rem;
+}
+
+@media (max-width: 768px) {
+  .grid-2 { grid-template-columns: 1fr; }
+}
+
+/* Minimalist Hero Sniper Box */
+.sniper-box {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  padding: 1.75rem;
+  text-align: center;
+}
+
+.countdown-wrapper {
+  margin: 1.25rem auto;
+}
+
+.countdown-timer {
+  font-family: var(--font-mono);
+  font-size: 2.8rem;
+  font-weight: 700;
+  color: var(--slate-900);
+  letter-spacing: -0.03em;
+}
+
+.countdown-timer .ms {
+  font-size: 1.5rem;
+  color: var(--slate-500);
+}
+
+/* Forms & Inputs */
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin-bottom: 0.9rem;
+}
+
+.form-label {
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: var(--slate-700);
+}
+
+.form-control {
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  color: var(--slate-800);
+  padding: 0.55rem 0.85rem;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  transition: border-color 0.15s ease;
+}
+
+.form-control:focus {
+  outline: none;
+  border-color: var(--navy-primary);
+  box-shadow: 0 0 0 3px rgba(7, 64, 107, 0.08);
+}
+
+/* Buttons */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.45rem;
+  padding: 0.55rem 1.15rem;
+  font-family: var(--font-sans);
+  font-size: 0.88rem;
+  font-weight: 600;
+  border-radius: var(--radius-sm);
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.btn-primary {
+  background: var(--navy-primary);
+  color: #ffffff;
+}
+
+.btn-primary:hover {
+  background: var(--navy-hover);
+}
+
+.btn-secondary {
+  background: var(--bg-subtle);
+  border-color: var(--border-strong);
+  color: var(--slate-700);
+}
+
+.btn-secondary:hover {
+  background: #e2e8f0;
+}
+
+.btn-danger {
+  background: var(--rose-subtle);
+  border-color: #fecaca;
+  color: var(--rose);
+}
+
+.btn-danger:hover {
+  background: var(--rose);
+  color: #ffffff;
+}
+
+.btn-success {
+  background: var(--emerald);
+  color: #ffffff;
+}
+
+.btn-success:hover {
+  background: #047857;
+}
+
+.btn-sm {
+  padding: 0.35rem 0.65rem;
+  font-size: 0.78rem;
+}
+
+/* Tables (Minimalist) */
+.table-container {
+  overflow-x: auto;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  text-align: left;
+  font-size: 0.86rem;
+}
+
+.table th {
+  background: var(--bg-subtle);
+  padding: 0.65rem 0.9rem;
+  font-weight: 600;
+  color: var(--slate-600);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.table td {
+  padding: 0.75rem 0.9rem;
+  border-bottom: 1px solid var(--border-subtle);
+  color: var(--slate-800);
+}
+
+.table tr:last-child td {
+  border-bottom: none;
+}
+
+.table tr:hover td {
+  background: #f8fafc;
+}
+
+/* Status Badges */
+.badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 0.2rem 0.55rem;
+  border-radius: var(--radius-full);
+  font-size: 0.72rem;
+  font-weight: 600;
+}
+
+.badge-success { background: var(--emerald-subtle); color: var(--emerald); }
+.badge-warning { background: var(--amber-subtle); color: var(--amber); }
+.badge-danger { background: var(--rose-subtle); color: var(--rose); }
+.badge-neutral { background: var(--bg-subtle); color: var(--slate-600); }
+
+/* Minimalist Terminal */
+.terminal {
+  background: #0f172a;
+  color: #e2e8f0;
+  font-family: var(--font-mono);
+  font-size: 0.8rem;
+  padding: 0.9rem;
+  border-radius: var(--radius-sm);
+  height: 220px;
+  overflow-y: auto;
+  line-height: 1.4;
+}
+
+.terminal-line {
+  margin-bottom: 0.25rem;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.terminal-time { color: #64748b; }
+.terminal-info { color: #f8fafc; }
+.terminal-success { color: #34d399; }
+.terminal-warning { color: #fbbf24; }
+.terminal-error { color: #f87171; }
+
+/* Meal Card (Minimalist) */
+.meal-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+}
+
+.meal-card.unavailable {
+  opacity: 0.75;
+  background: #f8fafc;
+}
+
+.meal-quota-row {
+  display: flex;
+  justify-content: space-between;
+  background: var(--bg-subtle);
+  padding: 0.65rem 0.85rem;
+  border-radius: var(--radius-sm);
+  margin: 0.85rem 0;
+  font-size: 0.85rem;
+}
+
+/* Ticket & Clean QR (Imagen 3) */
+.ticket-wrapper {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-md);
+  padding: 1.25rem;
+  margin-bottom: 1.25rem;
+  display: flex;
+  gap: 1.5rem;
+  flex-wrap: wrap;
+  align-items: center;
+}
+
+.qr-box {
+  background: #ffffff;
+  padding: 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  box-shadow: var(--shadow-sm);
+}
+
+.qr-canvas-holder {
+  width: 180px;
+  height: 180px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Modal */
+.modal-overlay {
+  position: fixed;
+  top: 0; left: 0; width: 100vw; height: 100vh;
+  background: rgba(15, 23, 42, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  padding: 1rem;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.15s ease;
+}
+
+.modal-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.modal-card {
+  background: #ffffff;
+  border-radius: var(--radius-md);
+  max-width: 440px;
+  width: 100%;
+  overflow: hidden;
+  box-shadow: var(--shadow-lg);
+}
+
+.modal-header {
+  background: var(--navy-primary);
+  color: #ffffff;
+  padding: 1rem 1.25rem;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-header h3 {
+  font-size: 1rem;
+  font-weight: 600;
+}
+
+.modal-body {
+  padding: 1.25rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* Toast */
+.toast-shelf {
+  position: fixed;
+  bottom: 1.5rem;
+  right: 1.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  z-index: 9999;
+}
+
+.toast-msg {
+  background: var(--slate-900);
+  color: #ffffff;
+  padding: 0.75rem 1.15rem;
+  border-radius: var(--radius-sm);
+  font-size: 0.85rem;
+  box-shadow: var(--shadow-md);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}

@@ -1,0 +1,451 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Comedor UNAB · Sistema de Reservas</title>
+  <link rel="icon" href="/assets/favicon.ico">
+  <link rel="stylesheet" href="/style.css">
+  <script src="/qrcode.min.js"></script>
+</head>
+<body>
+
+  <!-- VIEW 1: AUTHENTICATION SCREEN (LOGIN) -->
+  <div id="view-login" style="display: flex; min-height: 100vh; align-items: center; justify-content: center; padding: 1.5rem;">
+    <div class="card" style="max-width: 400px; width: 100%; padding: 2rem; box-shadow: var(--shadow-lg);">
+      <div style="text-align: center; margin-bottom: 1.5rem;">
+        <img src="/assets/logo_unab.png" alt="UNAB" style="height: 48px; margin-bottom: 0.75rem;" onerror="this.style.display='none'">
+        <h2 style="font-size: 1.35rem; color: var(--navy-primary); font-weight: 700;">Comedor Universitario</h2>
+        <p style="font-size: 0.85rem; color: var(--slate-500);">Ingresa con tu cuenta institucional o de administrador</p>
+      </div>
+
+      <form id="loginForm">
+        <div class="form-group">
+          <label class="form-label">Usuario / Código UNAB</label>
+          <input type="text" class="form-control" id="loginUsername" placeholder="Ej: 222.0113.028 o admin" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Contraseña</label>
+          <input type="password" class="form-control" id="loginPassword" placeholder="Contraseña" required>
+        </div>
+        <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 0.75rem;" id="btnLoginSubmit">
+          Iniciar Sesión
+        </button>
+      </form>
+
+      <!-- Quick test logins -->
+      <div style="margin-top: 1.5rem; padding-top: 1rem; border-top: 1px solid var(--border-subtle); display: flex; flex-direction: column; gap: 0.5rem;">
+        <span style="font-size: 0.75rem; color: var(--slate-500); text-align: center; font-weight: 600;">ACCESOS RÁPIDOS GUARDADOS</span>
+        <div style="display: flex; gap: 0.5rem;">
+          <button type="button" class="btn btn-secondary btn-sm" style="flex: 1;" onclick="fillLogin('222.0113.028', 'Dotamipasion12345')">
+            👤 Alumno (Angelo)
+          </button>
+          <button type="button" class="btn btn-secondary btn-sm" style="flex: 1;" onclick="fillLogin('admin', 'admin12345')">
+            🛡️ SuperAdmin
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- VIEW 2: AUTHENTICATED APP -->
+  <div id="view-app" class="app-container" style="display: none;">
+    <!-- Navigation Bar -->
+    <header class="navbar">
+      <div class="brand">
+        <img src="/assets/logo_unab.png" alt="UNAB" class="brand-logo" onerror="this.style.display='none'">
+        <div class="brand-info">
+          <h1>Comedor UNAB · Reservas</h1>
+          <p id="appSubtitle">Universidad Nacional de Barranca</p>
+        </div>
+      </div>
+
+      <div class="nav-actions">
+        <!-- Live Time Peru UTC-5 -->
+        <div class="status-pill time" title="Hora sincronizada de Perú">
+          <span class="status-dot"></span>
+          <span id="liveClockText">--:--:--</span>
+        </div>
+
+        <!-- Role Pill -->
+        <span class="status-pill" id="userRoleBadge">Estudiante</span>
+
+        <!-- RAM telemetry pill (Admin only or always visible clean) -->
+        <span class="status-pill" id="ramPill" style="display: none;" title="Consumo de memoria RAM del servidor">
+          RAM: <span id="ramUsageVal">--</span> MB
+        </span>
+
+        <!-- User Name -->
+        <span style="font-size: 0.85rem; font-weight: 600; color: var(--slate-800);" id="topUserName">Usuario</span>
+
+        <button class="btn btn-secondary btn-sm" id="btnLogout" title="Cerrar sesión">
+          Salir
+        </button>
+      </div>
+    </header>
+
+    <!-- SECTION: SUPERADMIN PANEL -->
+    <div id="panel-superadmin" style="display: none;">
+      <nav class="tabs-header">
+        <button class="tab-link active" data-target="admin-tab-users">👥 Gestión de Alumnos</button>
+        <button class="tab-link" data-target="admin-tab-sniper">🎯 Francotirador Masivo (17:00)</button>
+        <button class="tab-link" data-target="admin-tab-reservas">📋 Todas las Reservas</button>
+        <button class="tab-link" data-target="admin-tab-server">⚡ Métricas de Servidor (RAM)</button>
+      </nav>
+
+      <!-- Admin Tab 1: User Management -->
+      <div class="tab-pane active" id="admin-tab-users">
+        <div class="card">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <div>
+              <h2 class="card-title">Alumnos Registrados</h2>
+              <p class="card-desc">Controla los accesos y credenciales de los estudiantes para el comedor.</p>
+            </div>
+            <button class="btn btn-primary btn-sm" id="btnOpenAddUserModal">
+              + Agregar Alumno
+            </button>
+          </div>
+
+          <div class="table-container">
+            <table class="table" id="adminUsersTable">
+              <thead>
+                <tr>
+                  <th>Código / Usuario</th>
+                  <th>Nombre Completo</th>
+                  <th>DNI</th>
+                  <th>Sede</th>
+                  <th>Comida Objetivo</th>
+                  <th>Auto-Sniper</th>
+                  <th>Estado</th>
+                  <th>Acciones</th>
+                </tr>
+              </thead>
+              <tbody id="adminUsersTableBody">
+                <!-- Injected via JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Admin Tab 2: Mass Sniper -->
+      <div class="tab-pane" id="admin-tab-sniper">
+        <div class="grid-2">
+          <div class="card sniper-box">
+            <span class="badge badge-warning" id="adminSniperStatusBadge">MODO EN ESPERA</span>
+            <h2 style="font-size: 1.25rem; font-weight: 700; margin: 0.75rem 0 0.25rem 0;">Francotirador Centralizado</h2>
+            <p class="card-desc">Dispara reservas automáticas para todos los alumnos activos configurados a las 17:00:00.</p>
+
+            <div class="countdown-wrapper">
+              <div class="countdown-timer">
+                <span id="adminCdHours">00</span>:<span id="adminCdMins">00</span>:<span id="adminCdSecs">00</span><span class="ms" id="adminCdMs">.000</span>
+              </div>
+            </div>
+
+            <div style="display: flex; gap: 0.5rem; justify-content: center; margin-top: 1rem;">
+              <button class="btn btn-success" id="btnAdminToggleSniper">
+                🚀 Armar Francotirador a las 17:00
+              </button>
+              <button class="btn btn-danger" id="btnAdminForceFire" title="Disparo manual inmediato">
+                ⚡ Forzar Disparo Ahora
+              </button>
+            </div>
+          </div>
+
+          <div class="card">
+            <h2 class="card-title">Registro en Tiempo Real</h2>
+            <p class="card-desc">Eventos y respuestas del servidor.</p>
+            <div class="terminal" id="adminTerminal">
+              <div class="terminal-line"><span class="terminal-time">[00:00:00]</span><span class="terminal-info">Panel SuperAdmin en línea.</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Admin Tab 3: All Reservations -->
+      <div class="tab-pane" id="admin-tab-reservas">
+        <div class="card">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem;">
+            <div>
+              <h2 class="card-title">Historial de Reservas Generadas</h2>
+              <p class="card-desc">Auditoría de tickets obtenidos y cancelaciones de todos los estudiantes.</p>
+            </div>
+            <button class="btn btn-secondary btn-sm" id="btnRefreshAdminReservas">
+              🔄 Actualizar
+            </button>
+          </div>
+
+          <div class="table-container">
+            <table class="table">
+              <thead>
+                <tr>
+                  <th>Fecha</th>
+                  <th>Hora</th>
+                  <th>Alumno</th>
+                  <th>DNI</th>
+                  <th>Comida</th>
+                  <th>Sede</th>
+                  <th>Estado</th>
+                  <th>ID Ticket</th>
+                </tr>
+              </thead>
+              <tbody id="adminReservasTableBody">
+                <!-- Injected via JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+
+      <!-- Admin Tab 4: Server Metrics -->
+      <div class="tab-pane" id="admin-tab-server">
+        <div class="grid-2">
+          <div class="card">
+            <h2 class="card-title">Consumo de Memoria RAM</h2>
+            <p class="card-desc">Optimizado para el tier gratuito y estándar de Railway (< 512 MB límite).</p>
+            
+            <div style="display: flex; gap: 1rem; margin: 1rem 0;">
+              <div style="flex: 1; background: var(--bg-subtle); padding: 1rem; border-radius: var(--radius-sm); text-align: center;">
+                <span style="font-size: 0.75rem; color: var(--slate-500); font-weight: 600;">RAM RESIDENTE (RSS)</span>
+                <p style="font-size: 1.5rem; font-weight: 700; color: var(--navy-primary);" id="metricRss">-- MB</p>
+              </div>
+              <div style="flex: 1; background: var(--bg-subtle); padding: 1rem; border-radius: var(--radius-sm); text-align: center;">
+                <span style="font-size: 0.75rem; color: var(--slate-500); font-weight: 600;">HEAP USADO</span>
+                <p style="font-size: 1.5rem; font-weight: 700; color: var(--emerald);" id="metricHeap">-- MB</p>
+              </div>
+            </div>
+
+            <p style="font-size: 0.8rem; color: var(--emerald); font-weight: 600;">
+              ✅ Estado de memoria: Extremadamente óptimo (< 40MB).
+            </p>
+          </div>
+
+          <div class="card">
+            <h2 class="card-title">Información de Entorno (Railway)</h2>
+            <p class="card-desc">Parámetros del contenedor de ejecución.</p>
+            <table class="table">
+              <tr><td><strong>Entorno Railway:</strong></td><td id="metricRailway">Local / Docker</td></tr>
+              <tr><td><strong>Versión Node.js:</strong></td><td id="metricNode">--</td></tr>
+              <tr><td><strong>Sesiones Activas:</strong></td><td id="metricSessions">--</td></tr>
+              <tr><td><strong>Tiempo en Línea (Uptime):</strong></td><td id="metricUptime">--</td></tr>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- SECTION: STUDENT / USER PANEL -->
+    <div id="panel-student" style="display: none;">
+      <nav class="tabs-header">
+        <button class="tab-link active" data-target="student-tab-sniper">🎯 Francotirador a las 17:00</button>
+        <button class="tab-link" data-target="student-tab-menu">📅 Menú y Disponibilidad</button>
+        <button class="tab-link" data-target="student-tab-tickets">🎟️ Mis Reservas y QR <span class="badge badge-success" id="studentTicketsBadge">0</span></button>
+        <button class="tab-link" data-target="student-tab-status">🛡️ Mi Asistencia</button>
+      </nav>
+
+      <!-- Student Tab 1: Auto Sniper -->
+      <div class="tab-pane active" id="student-tab-sniper">
+        <div class="grid-2">
+          <div class="card sniper-box">
+            <span class="badge badge-success" id="studentSniperBadge">LISTO PARA EL DISPARO</span>
+            <h2 style="font-size: 1.35rem; font-weight: 700; margin: 0.75rem 0 0.25rem 0;">Reserva Automática de Almuerzo</h2>
+            <p class="card-desc">El sistema esperará exactamente hasta las 17:00:00 para capturar tu cupo antes de que se agote.</p>
+
+            <div class="countdown-wrapper">
+              <div class="countdown-timer">
+                <span id="userCdHours">00</span>:<span id="userCdMins">00</span>:<span id="userCdSecs">00</span><span class="ms" id="userCdMs">.000</span>
+              </div>
+              <p style="font-size: 0.8rem; color: var(--slate-500);" id="userCdNotice">Apertura oficial: 17:00:00 PM</p>
+            </div>
+
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; text-align: left; margin: 1rem 0;">
+              <div class="form-group">
+                <label class="form-label">Comida Objetivo</label>
+                <select class="form-control" id="userTargetMeal">
+                  <option value="ALMUERZO" selected>🍲 ALMUERZO</option>
+                  <option value="CENA">🌙 CENA</option>
+                  <option value="DESAYUNO">☕ DESAYUNO</option>
+                </select>
+              </div>
+              <div class="form-group">
+                <label class="form-label">Fecha</label>
+                <input type="date" class="form-control" id="userTargetDate">
+              </div>
+            </div>
+
+            <button class="btn btn-primary" style="width: 100%;" id="btnUserSaveSniper">
+              💾 Guardar Preferencia de Auto-Reserva
+            </button>
+          </div>
+
+          <div class="card">
+            <h2 class="card-title">Registro de Conexión</h2>
+            <p class="card-desc">Estado de peticiones hacia la API de UNAB.</p>
+            <div class="terminal" id="studentTerminal">
+              <div class="terminal-line"><span class="terminal-time">[00:00:00]</span><span class="terminal-info">Sesión de estudiante iniciada.</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Student Tab 2: Menu & Live Availability -->
+      <div class="tab-pane" id="student-tab-menu">
+        <div class="card">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <h2 class="card-title">Programación de Comida</h2>
+              <p class="card-desc">Verifica si hay platos disponibles para reservar de forma manual.</p>
+            </div>
+            <div style="display: flex; gap: 0.5rem;">
+              <input type="date" class="form-control" id="menuFilterDate" style="max-width: 160px;">
+              <button class="btn btn-secondary btn-sm" id="btnRefreshMenu">🔄 Consultar</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid-3" id="menuCardsHolder">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+
+      <!-- Student Tab 3: Tickets & QR (Image 3) -->
+      <div class="tab-pane" id="student-tab-tickets">
+        <div class="card">
+          <div style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+              <h2 class="card-title">Mis Tickets y Código QR</h2>
+              <p class="card-desc">Muestra este código QR o indica tu DNI en la ventanilla del comedor.</p>
+            </div>
+            <button class="btn btn-secondary btn-sm" id="btnRefreshStudentTickets">🔄 Actualizar</button>
+          </div>
+        </div>
+
+        <div id="studentTicketsHolder">
+          <!-- Dynamically populated -->
+        </div>
+      </div>
+
+      <!-- Student Tab 4: Attendance & Status -->
+      <div class="tab-pane" id="student-tab-status">
+        <div class="grid-2">
+          <div class="card">
+            <h2 class="card-title">Control de Asistencias</h2>
+            <p class="card-desc">Límite oficial de faltas antes de sanción o bloqueo.</p>
+
+            <div style="display: flex; gap: 1rem; margin: 1rem 0;">
+              <div style="flex: 1; background: var(--bg-subtle); padding: 1rem; border-radius: var(--radius-sm); text-align: center;">
+                <span style="font-size: 0.75rem; color: var(--slate-500); font-weight: 600;">INASISTENCIAS</span>
+                <p style="font-size: 1.5rem; font-weight: 700; color: var(--slate-800);" id="studentInasistencias">0</p>
+              </div>
+              <div style="flex: 1; background: var(--bg-subtle); padding: 1rem; border-radius: var(--radius-sm); text-align: center;">
+                <span style="font-size: 0.75rem; color: var(--slate-500); font-weight: 600;">LÍMITE MÁXIMO</span>
+                <p style="font-size: 1.5rem; font-weight: 700; color: var(--slate-800);">3</p>
+              </div>
+            </div>
+
+            <p style="font-size: 0.85rem; color: var(--emerald); font-weight: 600;">
+              ✅ Tu cuenta está 100% habilitada para reservar almuerzos.
+            </p>
+          </div>
+
+          <div class="card">
+            <h2 class="card-title">Ficha del Estudiante</h2>
+            <p class="card-desc">Datos registrados en el sistema universitario.</p>
+            <table class="table">
+              <tr><td><strong>Nombre:</strong></td><td id="fichaNombre">--</td></tr>
+              <tr><td><strong>Código:</strong></td><td id="fichaCodigo">--</td></tr>
+              <tr><td><strong>DNI:</strong></td><td id="fichaDni">--</td></tr>
+              <tr><td><strong>Sede Comedor:</strong></td><td id="fichaSede">LA FLORIDA</td></tr>
+              <tr><td><strong>Condición:</strong></td><td>LIBRE (Sin Beca)</td></tr>
+            </table>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODAL: AGREGAR ALUMNO (SUPERADMIN) -->
+  <div class="modal-overlay" id="modalAddUser">
+    <div class="modal-card">
+      <div class="modal-header">
+        <h3>Agregar Alumno a la Base de Datos</h3>
+        <button style="background: none; border: none; color: #fff; font-size: 1.25rem; cursor: pointer;" onclick="closeModal('modalAddUser')">✕</button>
+      </div>
+      <form id="formAddUser" style="padding: 1.25rem;">
+        <div class="form-group">
+          <label class="form-label">Código de Estudiante UNAB</label>
+          <input type="text" class="form-control" id="addUsername" placeholder="Ej: 222.0113.028" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Contraseña Institucional</label>
+          <input type="password" class="form-control" id="addPassword" placeholder="Contraseña de login UNAB" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Nombre Completo del Alumno</label>
+          <input type="text" class="form-control" id="addName" placeholder="Ej: PÉREZ LÓPEZ, JUAN" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">DNI</label>
+          <input type="text" class="form-control" id="addDni" placeholder="8 dígitos" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Comida Preferida para Francotirador</label>
+          <select class="form-control" id="addTargetMeal">
+            <option value="ALMUERZO" selected>ALMUERZO</option>
+            <option value="CENA">CENA</option>
+            <option value="DESAYUNO">DESAYUNO</option>
+          </select>
+        </div>
+        <div style="display: flex; gap: 0.5rem; margin-top: 1.25rem;">
+          <button type="button" class="btn btn-secondary" style="flex: 1;" onclick="closeModal('modalAddUser')">Cancelar</button>
+          <button type="submit" class="btn btn-primary" style="flex: 1;">Guardar Alumno</button>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <!-- MODAL: PASE DIGITAL QR A PANTALLA COMPLETA -->
+  <div class="modal-overlay" id="modalDigitalPass">
+    <div class="modal-card" style="text-align: center;">
+      <div class="modal-header">
+        <h3>Pase de Comedor Universitario</h3>
+        <button style="background: none; border: none; color: #fff; font-size: 1.25rem; cursor: pointer;" onclick="closeModal('modalDigitalPass')">✕</button>
+      </div>
+      <div class="modal-body">
+        <h4 style="color: var(--navy-primary); font-size: 1.1rem; margin-bottom: 0.25rem;" id="passStudentName">SERNA SIMEON, ANGELO</h4>
+        <p style="font-size: 0.85rem; color: var(--slate-600); margin-bottom: 1rem;">DNI: <span id="passStudentDni">76448557</span></p>
+
+        <!-- High contrast QR Frame -->
+        <div style="padding: 10px; background: #ffffff; border: 2px solid var(--navy-primary); border-radius: 8px; margin-bottom: 1rem;">
+          <div id="modalPassQrHolder" style="width: 200px; height: 200px; display: flex; align-items: center; justify-content: center;"></div>
+        </div>
+
+        <div style="width: 100%; border-top: 1px dashed var(--border-strong); padding-top: 0.75rem; font-size: 0.85rem; text-align: left;">
+          <div style="display: flex; justify-content: space-between; margin-bottom: 0.35rem;">
+            <span style="color: var(--slate-500);">Comida:</span>
+            <strong id="passMealType" style="color: var(--navy-primary);">ALMUERZO</strong>
+          </div>
+          <div style="display: flex; justify-content: space-between; margin-bottom: 0.35rem;">
+            <span style="color: var(--slate-500);">Fecha:</span>
+            <span id="passMealDate">2026-10-01</span>
+          </div>
+          <div style="display: flex; justify-content: space-between;">
+            <span style="color: var(--slate-500);">Sede:</span>
+            <span>LA FLORIDA</span>
+          </div>
+        </div>
+
+        <div style="display: flex; gap: 0.5rem; width: 100%; margin-top: 1.25rem;">
+          <button class="btn btn-secondary" style="flex: 1;" onclick="window.print()">🖨️ Imprimir</button>
+          <button class="btn btn-primary" style="flex: 1;" onclick="closeModal('modalDigitalPass')">Cerrar</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Shelf -->
+  <div class="toast-shelf" id="toastShelf"></div>
+
+  <script src="/app.js"></script>
+</body>
+</html>
