@@ -80,57 +80,59 @@ async function fetchComedor(endpoint, options = {}) {
 }
 
 async function runCliSniper() {
+  // Support CLI arguments: node sniper_consola.js --meal DESAYUNO --date 2026-10-02
+  const args = process.argv.slice(2);
+  let cliMeal = null;
+  let cliDate = null;
+  for (let i = 0; i < args.length; i++) {
+    if (args[i] === '--meal' && args[i + 1]) cliMeal = args[i + 1].toUpperCase();
+    if (args[i] === '--date' && args[i + 1]) cliDate = args[i + 1];
+  }
+
+  const targetMeal = (cliMeal || config.sniper?.targetMeal || 'ALMUERZO').toUpperCase();
+  const targetDateStr = cliDate || getTodayLimaDate(1); // Default tomorrow
+
   console.clear();
   console.log('===========================================================');
-  console.log('🎯 UNAB COMEDOR · FRANCOTIRADOR CLI A LAS 17:00:00');
+  console.log(`🎯 UNAB COMEDOR · FRANCOTIRADOR MULTI-COMIDA (${targetMeal})`);
   console.log('===========================================================');
   console.log(`Alumno:     ${config.student?.nombre || config.username}`);
   console.log(`DNI:        ${config.student?.dni || '76448557'}`);
-  console.log(`Objetivo:   ${config.sniper?.targetMeal || 'ALMUERZO'} a las ${config.sniper?.targetTime || '17:00:00'}`);
+  console.log(`Comida:     ${targetMeal}`);
+  console.log(`Fecha:      ${targetDateStr}`);
   console.log(`Zona:       America/Lima (Hora Perú)`);
   console.log('===========================================================\n');
 
   const ok = await login();
   if (!ok) {
-    console.log('No se pudo continuar. Revisa config.json.');
+    console.log('No se pudo continuar. Revisa las credenciales.');
     return;
   }
 
+  // Official opening schedule:
+  // Almuerzo: 17:00:00 del día anterior. Desayuno: apertura programada. Cena: 17:00:00.
   const targetTimeStr = config.sniper?.targetTime || '17:00:00';
-  const targetMeal = (config.sniper?.targetMeal || 'ALMUERZO').toUpperCase();
-  const targetDateStr = getTodayLimaDate();
   const leadTimeMs = config.sniper?.leadTimeMs ?? 250;
 
-  const targetTs = new Date(`${targetDateStr}T${targetTimeStr}-05:00`).getTime();
+  const todayStr = getTodayLimaDate(0);
+  const targetTs = new Date(`${todayStr}T${targetTimeStr}-05:00`).getTime();
   let remainingMs = targetTs - Date.now();
 
-  console.log(`\n📅 Fecha objetivo: ${targetDateStr}`);
-  console.log(`⏰ Hora objetivo:  ${targetTimeStr}`);
+  console.log(`📅 Fecha objetivo: ${targetDateStr}`);
+  console.log(`⏰ Hora oficial:   ${targetTimeStr}`);
   console.log(`⚡ Offset disparo: -${leadTimeMs}ms\n`);
 
-  if (remainingMs < -60000) {
-    console.log(`⚠️ La hora ${targetTimeStr} para hoy ya pasó. Disparando sondeo inmediato de prueba...`);
+  if (remainingMs < -60000 || remainingMs <= 0) {
+    console.log(`🚀 Disparando captura de cupos para ${targetMeal}...`);
     await executeBurst(targetDateStr, targetMeal);
     return;
   }
 
-  console.log('⏳ Esperando la hora exacta de apertura. Presiona Ctrl+C para cancelar.');
-
-  const countdownInterval = setInterval(() => {
-    const now = Date.now();
-    const diff = targetTs - now;
-
-    if (diff <= leadTimeMs) {
-      clearInterval(countdownInterval);
-      console.log(`\n\n🚀 ¡¡DISPARO INICIADO A LAS ${getLimaTimeString()}!!`);
-      executeBurst(targetDateStr, targetMeal);
-      return;
-    }
-
-    const s = Math.floor(diff / 1000);
-    const ms = diff % 1000;
-    process.stdout.write(`\r[${getLimaTimeString()}] Cuenta regresiva: T - ${s}s ${ms}ms    `);
-  }, 100);
+  console.log(`⏳ Francotirador programado para las ${targetTimeStr}. Disparará automáticamente.`);
+  setTimeout(() => {
+    console.log(`\n\n🚀 ¡¡DISPARO INICIADO A LAS ${getLimaTimeString()} PARA ${targetMeal}!!`);
+    executeBurst(targetDateStr, targetMeal);
+  }, Math.max(0, remainingMs - leadTimeMs));
 }
 
 async function executeBurst(targetDate, targetMeal) {

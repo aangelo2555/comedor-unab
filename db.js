@@ -16,19 +16,24 @@ if (!fs.existsSync(DATA_DIR)) {
   fs.mkdirSync(DATA_DIR, { recursive: true });
 }
 
+// Credentials configured via environment variables with safe defaults (NEVER exposed to frontend)
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'aangelo2555@gmail.com';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Dotamipasion12345';
+
 const DEFAULT_DB = {
   users: [
     {
       id: 'admin-01',
-      username: 'admin',
-      password: 'admin12345',
+      username: ADMIN_EMAIL,
+      email: ADMIN_EMAIL,
+      password: ADMIN_PASSWORD,
       role: 'superadmin',
       name: 'Super Administrador Comedor',
       dni: '00000000',
       campus: 'LA_FLORIDA',
       active: true,
       autoSniper: false,
-      targetMeal: 'ALMUERZO',
+      targetMeal: 'TODAS',
       unabToken: '',
       createdAt: new Date().toISOString()
     },
@@ -48,6 +53,7 @@ const DEFAULT_DB = {
     }
   ],
   reservas: [],
+  advanceReservations: [],
   settings: {
     sniperTime: '17:00:00',
     leadTimeMs: 250,
@@ -66,13 +72,67 @@ function loadDb() {
       const content = fs.readFileSync(DB_FILE, 'utf8');
       cache = JSON.parse(content);
     } else {
-      cache = { ...DEFAULT_DB };
+      cache = JSON.parse(JSON.stringify(DEFAULT_DB));
       saveDb(cache);
     }
   } catch (err) {
     console.error('Error al leer base de datos, usando por defecto:', err);
-    cache = { ...DEFAULT_DB };
+    cache = JSON.parse(JSON.stringify(DEFAULT_DB));
   }
+
+  // Self-healing: Ensure arrays exist
+  if (!Array.isArray(cache.users)) cache.users = [];
+  if (!Array.isArray(cache.reservas)) cache.reservas = [];
+  if (!Array.isArray(cache.advanceReservations)) cache.advanceReservations = [];
+  if (!Array.isArray(cache.auditLogs)) cache.auditLogs = [];
+  if (!cache.settings) cache.settings = { ...DEFAULT_DB.settings };
+
+  // Self-healing: Guarantee SuperAdmin user has the requested credentials
+  let admin = cache.users.find(u => u.role === 'superadmin' || u.username === 'admin' || u.username === ADMIN_EMAIL);
+  if (!admin) {
+    admin = {
+      id: 'admin-01',
+      username: ADMIN_EMAIL,
+      email: ADMIN_EMAIL,
+      password: ADMIN_PASSWORD,
+      role: 'superadmin',
+      name: 'Super Administrador Comedor',
+      dni: '00000000',
+      campus: 'LA_FLORIDA',
+      active: true,
+      autoSniper: false,
+      targetMeal: 'TODAS',
+      unabToken: '',
+      createdAt: new Date().toISOString()
+    };
+    cache.users.unshift(admin);
+  } else {
+    // Keep username and password updated according to environment/request
+    admin.username = ADMIN_EMAIL;
+    admin.email = ADMIN_EMAIL;
+    admin.password = ADMIN_PASSWORD;
+    admin.role = 'superadmin';
+  }
+
+  // Self-healing: Guarantee student Angelo account exists
+  let angelo = cache.users.find(u => u.username === '222.0113.028');
+  if (!angelo) {
+    cache.users.push({
+      id: 'usr-angelo',
+      username: '222.0113.028',
+      password: 'Dotamipasion12345',
+      role: 'user',
+      name: 'SERNA SIMEON, ANGELO THOMAS',
+      dni: '76448557',
+      campus: 'LA_FLORIDA',
+      active: true,
+      autoSniper: true,
+      targetMeal: 'ALMUERZO',
+      unabToken: '',
+      createdAt: new Date().toISOString()
+    });
+  }
+
   return cache;
 }
 
@@ -90,7 +150,11 @@ function saveDb(data = cache) {
 // User Helpers
 function findUserByUsername(username) {
   const db = loadDb();
-  return db.users.find(u => u.username.toLowerCase() === (username || '').toLowerCase());
+  const search = (username || '').toLowerCase().trim();
+  return db.users.find(u => 
+    u.username.toLowerCase() === search || 
+    (u.email && u.email.toLowerCase() === search)
+  );
 }
 
 function findUserById(id) {
@@ -179,8 +243,11 @@ function recordReservation(reserva) {
       ...reserva,
       recordedAt: new Date().toISOString()
     });
-    // Keep max 200 items in memory/disk
-    if (db.reservas.length > 200) db.reservas.pop();
+    // Keep max 250 items in memory/disk
+    if (db.reservas.length > 250) db.reservas.pop();
+    saveDb(db);
+  } else {
+    Object.assign(existing, reserva);
     saveDb(db);
   }
 }
@@ -192,11 +259,139 @@ function updateReservationStatus(id, newStatus) {
     r.estado = newStatus;
     saveDb(db);
   }
+  // Also check advance reservations
+  const adv = (db.advanceReservations || []).find(x => x.id === id);
+  if (adv) {
+    adv.status = newStatus;
+    saveDb(db);
+  }
 }
 
 function getAllReservations() {
   const db = loadDb();
   return db.reservas || [];
+}
+
+// --------------------------------------------------------------------------
+// ADVANCE RESERVATION (RESERVA ANTICIPADA PARA MAÑANA) ENGINE
+// --------------------------------------------------------------------------
+function createAdvanceReservation(data) {
+  const db = loadDb();
+  if (!Array.isArray(db.advanceReservations)) db.advanceReservations = [];
+
+  const existingIdx = db.advanceReservations.findIndex(r => 
+    r.alumnoCodigo === data.alumnoCodigo && 
+    r.tipoComida.toUpperCase() === data.tipoComida.toUpperCase() && 
+    r.fecha === data.fecha
+  );
+
+  const reservationObj = {
+    id: `adv-${Date.now()}-${crypto.randomBytes(3).toString('hex')}`,
+    alumnoCodigo: data.alumnoCodigo,
+    alumnoNombre: data.alumnoNombre,
+    alumnoDni: data.alumnoDni,
+    tipoComida: data.tipoComida.toUpperCase(),
+    fecha: data.fecha,
+    campus: data.campus || 'LA_FLORIDA',
+    status: 'ACTIVA', // ACTIVA, PAUSADA, CONFIRMADA, ANULADA
+    programacionId: data.programacionId || null,
+    qrToken: data.qrToken || null,
+    ticketId: data.ticketId || null,
+    autoSniper: true,
+    createdAt: new Date().toISOString()
+  };
+
+  if (existingIdx !== -1) {
+    // If it was cancelled or paused, reactivate
+    db.advanceReservations[existingIdx] = {
+      ...db.advanceReservations[existingIdx],
+      ...reservationObj,
+      id: db.advanceReservations[existingIdx].id
+    };
+    saveDb(db);
+    addAuditLog(`Cita anticipada actualizada: ${data.tipoComida} para ${data.alumnoNombre} (${data.fecha}).`, 'info');
+    return db.advanceReservations[existingIdx];
+  }
+
+  db.advanceReservations.unshift(reservationObj);
+  if (db.advanceReservations.length > 300) db.advanceReservations.pop();
+  saveDb(db);
+  addAuditLog(`Cita anticipada registrada: ${data.tipoComida} para ${data.alumnoNombre} (${data.fecha}).`, 'info');
+  return reservationObj;
+}
+
+function getAdvanceReservations(filter = {}) {
+  const db = loadDb();
+  let list = db.advanceReservations || [];
+  if (filter.fecha) {
+    list = list.filter(r => r.fecha === filter.fecha);
+  }
+  if (filter.alumnoCodigo) {
+    list = list.filter(r => r.alumnoCodigo === filter.alumnoCodigo);
+  }
+  if (filter.status) {
+    list = list.filter(r => r.status === filter.status);
+  }
+  return list;
+}
+
+function toggleAdvanceReservation(id, newStatus) {
+  const db = loadDb();
+  const item = (db.advanceReservations || []).find(r => r.id === id);
+  if (!item) {
+    // Check if it's in standard reservations
+    const res = (db.reservas || []).find(r => r.id === id);
+    if (res) {
+      res.estado = newStatus || (res.estado === 'ACTIVA' ? 'PAUSADA' : 'ACTIVA');
+      saveDb(db);
+      return res;
+    }
+    throw new Error('Cita o reserva no encontrada.');
+  }
+
+  item.status = newStatus || (item.status === 'ACTIVA' ? 'PAUSADA' : 'ACTIVA');
+  saveDb(db);
+  addAuditLog(`Estado de cita ${item.tipoComida} (${item.alumnoNombre}) cambiado a: ${item.status}`, 'info');
+  return item;
+}
+
+function cancelAdvanceReservation(id) {
+  const db = loadDb();
+  const idx = (db.advanceReservations || []).findIndex(r => r.id === id);
+  if (idx !== -1) {
+    const cancelled = db.advanceReservations[idx];
+    cancelled.status = 'ANULADA';
+    saveDb(db);
+    addAuditLog(`Cita anticipada anulada: ${cancelled.tipoComida} (${cancelled.alumnoNombre}).`, 'warning');
+    return true;
+  }
+  return false;
+}
+
+function markAdvanceReservationConfirmed(id, ticketData) {
+  const db = loadDb();
+  const item = (db.advanceReservations || []).find(r => r.id === id);
+  if (item) {
+    item.status = 'CONFIRMADA';
+    item.ticketId = ticketData.id;
+    item.qrToken = ticketData.qrToken;
+    saveDb(db);
+  }
+}
+
+// Backup & Restore
+function backupDatabase() {
+  return loadDb();
+}
+
+function restoreDatabase(importedData) {
+  if (!importedData || !Array.isArray(importedData.users)) {
+    throw new Error('Estructura de respaldo inválida.');
+  }
+  saveDb(importedData);
+  loadDb(); // Trigger self-healing
+  addAuditLog('Base de datos restaurada desde respaldo JSON.', 'warning');
+  return true;
 }
 
 // Audit logs
@@ -234,6 +429,8 @@ function updateSettings(newSettings) {
 }
 
 module.exports = {
+  ADMIN_EMAIL,
+  ADMIN_PASSWORD,
   loadDb,
   findUserByUsername,
   findUserById,
@@ -244,6 +441,13 @@ module.exports = {
   recordReservation,
   updateReservationStatus,
   getAllReservations,
+  createAdvanceReservation,
+  getAdvanceReservations,
+  toggleAdvanceReservation,
+  cancelAdvanceReservation,
+  markAdvanceReservationConfirmed,
+  backupDatabase,
+  restoreDatabase,
   addAuditLog,
   getAuditLogs,
   getSettings,

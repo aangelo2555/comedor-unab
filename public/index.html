@@ -113,29 +113,33 @@
         </div>
       </div>
 
-      <!-- Admin Tab 2: Non-Invasive Scheduled Mass Sniper -->
+      <!-- Admin Tab 2: Intelligent Multi-Meal Scheduled Mass Sniper -->
       <div class="tab-pane" id="admin-tab-sniper">
         <div class="grid-2">
           <div class="card sniper-box">
-            <span class="badge badge-warning" id="adminSniperStatusBadge">PROGRAMADO PARA LAS 17:00</span>
-            <h2 style="font-size: 1.25rem; font-weight: 700; margin: 0.75rem 0 0.25rem 0;">Francotirador Centralizado</h2>
-            <p class="card-desc">Ejecuta la captura de cupos para todos los alumnos activos en el horario oficial de apertura.</p>
+            <span class="badge badge-success" id="adminSniperStatusBadge">PROGRAMACIÓN INTELIGENTE ACTIVA</span>
+            <h2 style="font-size: 1.25rem; font-weight: 700; margin: 0.75rem 0 0.25rem 0;">Francotirador Centralizado Multi-Horario</h2>
+            <p class="card-desc">Captura automatizada e inteligente de cupos para Desayuno, Almuerzo y Cena sin sobrecargar el servidor.</p>
 
-            <div class="countdown-wrapper">
-              <div class="countdown-timer">
-                <span id="adminCdHours">00</span>:<span id="adminCdMins">00</span>:<span id="adminCdSecs">00</span><span class="ms" id="adminCdMs">.000</span>
+            <div style="background: var(--bg-subtle); padding: 1rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); margin: 1.25rem 0; text-align: left;">
+              <div style="font-size: 0.82rem; color: var(--slate-700); margin-bottom: 0.5rem;">
+                <strong>Estado del Sistema:</strong> <span id="adminSniperSystemStatus" style="color: var(--emerald); font-weight: 600;">Listo para auto-disparo</span>
               </div>
-              <p style="font-size: 0.8rem; color: var(--slate-500); margin-top: 0.25rem;">Apertura oficial de cupos para mañana: 17:00:00 PM</p>
+              <div style="font-size: 0.8rem; color: var(--slate-500);">
+                Los cupos se procesarán automáticamente según las citas anticipadas que cada alumno tenga activas.
+              </div>
             </div>
 
-            <!-- Non-invasive Horario selector -->
+            <!-- Intelligent Meal and Date Selector -->
             <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; text-align: left; margin: 1.25rem 0;">
               <div class="form-group">
                 <label class="form-label">Comida Objetivo</label>
                 <select class="form-control" id="adminSniperMealSelect">
-                  <option value="ALMUERZO" selected>🍲 ALMUERZO (Apertura 17:00)</option>
-                  <option value="CENA">🌙 CENA (Atención 17:00 - 19:00)</option>
-                  <option value="DESAYUNO">☕ DESAYUNO (Atención 06:30 - 10:30)</option>
+                  <option value="INTELIGENTE" selected>🎯 MODO INTELIGENTE (Multi-Comida según Citas)</option>
+                  <option value="ALMUERZO">🍲 Solo ALMUERZO (Apertura 17:00)</option>
+                  <option value="DESAYUNO">☕ Solo DESAYUNO (06:30 - 10:30)</option>
+                  <option value="CENA">🌙 Solo CENA (17:00 - 19:00)</option>
+                  <option value="TODAS">⚡ TODAS LAS COMIDAS</option>
                 </select>
               </div>
               <div class="form-group">
@@ -144,17 +148,17 @@
               </div>
             </div>
 
-            <div style="display: flex; gap: 0.5rem; justify-content: center;">
-              <button class="btn btn-primary" id="btnAdminArmSniper" style="flex: 1;">
+            <div style="display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap;">
+              <button class="btn btn-primary" id="btnAdminArmSniper" style="flex: 1; min-width: 200px;">
                 🚀 Armar Francotirador a las 17:00
               </button>
               <button class="btn btn-secondary btn-sm" id="btnAdminForceFire" title="Disparo inmediato de prueba">
-                ⚡ Forzar Disparo
+                ⚡ Forzar Disparo Inmediato
               </button>
             </div>
           </div>
 
-          <!-- Clean Info Card instead of terminal -->
+          <!-- Official Schedule Info Card -->
           <div class="card">
             <h2 class="card-title">Ventanas de Atención Oficial UNAB</h2>
             <p class="card-desc">Horarios de comedor aprobados por Bienestar Universitario.</p>
@@ -163,14 +167,17 @@
               <div style="background: var(--bg-subtle); padding: 0.85rem; border-radius: var(--radius-sm); border-left: 3px solid var(--amber);">
                 <strong>☕ Desayuno</strong>
                 <p style="font-size: 0.82rem; color: var(--slate-600);">Horario de atención: 06:30:00 - 10:30:00</p>
+                <p style="font-size: 0.75rem; color: var(--slate-500); margin-top: 0.2rem;">Reserva anticipada disponible para el día siguiente.</p>
               </div>
               <div style="background: var(--bg-subtle); padding: 0.85rem; border-radius: var(--radius-sm); border-left: 3px solid var(--navy-primary);">
                 <strong>🍲 Almuerzo (Principal)</strong>
-                <p style="font-size: 0.82rem; color: var(--slate-600);">Horario de atención: 11:00:00 - 15:30:00 · <em>Apertura de cupos: 17:00:00 PM del día anterior</em></p>
+                <p style="font-size: 0.82rem; color: var(--slate-600);">Horario de atención: 11:00:00 - 15:30:00</p>
+                <p style="font-size: 0.75rem; color: var(--emerald); font-weight: 600; margin-top: 0.2rem;">Apertura oficial de cupos: 17:00:00 PM del día anterior.</p>
               </div>
               <div style="background: var(--bg-subtle); padding: 0.85rem; border-radius: var(--radius-sm); border-left: 3px solid #7e22ce;">
                 <strong>🌙 Cena</strong>
                 <p style="font-size: 0.82rem; color: var(--slate-600);">Horario de atención: 17:00:00 - 19:00:00</p>
+                <p style="font-size: 0.75rem; color: var(--slate-500); margin-top: 0.2rem;">Reserva anticipada habilitada según cupos libres.</p>
               </div>
             </div>
           </div>
@@ -182,8 +189,8 @@
         <div class="card">
           <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
             <div>
-              <h2 class="card-title">Historial Global de Tickets</h2>
-              <p class="card-desc">Registro histórico de reservas realizadas por los alumnos.</p>
+              <h2 class="card-title">Historial Global de Tickets y Citas</h2>
+              <p class="card-desc">Registro centralizado de reservas confirmadas y citas anticipadas de los alumnos.</p>
             </div>
             <button class="btn btn-secondary btn-sm" id="btnRefreshAdminReservas">
               🔄 Actualizar
@@ -201,7 +208,7 @@
                   <th>Comida</th>
                   <th>Sede</th>
                   <th>Estado</th>
-                  <th>ID Ticket</th>
+                  <th>ID Ticket / Cita</th>
                 </tr>
               </thead>
               <tbody id="adminReservasTableBody">
@@ -212,7 +219,7 @@
         </div>
       </div>
 
-      <!-- Admin Tab 4: Server Metrics -->
+      <!-- Admin Tab 4: Server Metrics & Resilient Backup -->
       <div class="tab-pane" id="admin-tab-server">
         <div class="grid-2">
           <div class="card">
@@ -231,87 +238,72 @@
             </div>
 
             <p style="font-size: 0.8rem; color: var(--emerald); font-weight: 600;">
-              ✅ Rendimiento ultra-bajo garantizado (< 45MB de RAM).
+              ✅ Rendimiento ultra-bajo garantizado (< 40MB de RAM).
             </p>
           </div>
 
           <div class="card">
-            <h2 class="card-title">Información de Entorno (Railway)</h2>
-            <p class="card-desc">Parámetros del contenedor de ejecución.</p>
-            <table class="table">
-              <tr><td><strong>Entorno Railway:</strong></td><td id="metricRailway">Local / Docker</td></tr>
-              <tr><td><strong>Versión Node.js:</strong></td><td id="metricNode">--</td></tr>
-              <tr><td><strong>Sesiones Activas:</strong></td><td id="metricSessions">--</td></tr>
-              <tr><td><strong>Tiempo en Línea:</strong></td><td id="metricUptime">--</td></tr>
-            </table>
+            <h2 class="card-title">Respaldo y Persistencia (Railway)</h2>
+            <p class="card-desc">Seguridad de datos garantizada con auto-recuperación y copias JSON.</p>
+            <div style="margin-bottom: 1rem; font-size: 0.82rem; color: var(--slate-600);">
+              Tu servidor incluye auto-curación para usuarios y citas. Puedes descargar o restaurar la base de datos completa en cualquier momento:
+            </div>
+            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
+              <a href="/api/admin/backup" class="btn btn-primary btn-sm" download style="text-decoration: none;">
+                💾 Descargar Respaldo JSON
+              </a>
+              <button class="btn btn-secondary btn-sm" id="btnTriggerRestore">
+                📥 Restaurar Respaldo JSON
+              </button>
+              <input type="file" id="fileRestoreInput" accept=".json" style="display: none;">
+            </div>
           </div>
         </div>
       </div>
     </div>
 
-    <!-- SECTION: STUDENT / USER PANEL (CLEAN & NO CONNECTION LOG) -->
+    <!-- SECTION: STUDENT / USER PANEL (REPLICA EXACTA IMAGEN 2 - SIN CUENTA REGRESIVA) -->
     <div id="panel-student" style="display: none;">
       <nav class="tabs-header">
-        <button class="tab-link active" data-target="student-tab-sniper">🎯 Auto-Reserva 17:00</button>
-        <button class="tab-link" data-target="student-tab-menu">📅 Menú y Disponibilidad</button>
+        <button class="tab-link active" data-target="student-tab-meals">🍽️ Reserva tu comida</button>
         <button class="tab-link" data-target="student-tab-tickets">🎟️ Mis Reservas y QR <span class="badge badge-success" id="studentTicketsBadge">0</span></button>
         <button class="tab-link" data-target="student-tab-status">🛡️ Mi Asistencia</button>
       </nav>
 
-      <!-- Student Tab 1: Auto Sniper - Simplified (Points 5, 7) -->
-      <div class="tab-pane active" id="student-tab-sniper">
-        <div class="card sniper-box" style="max-width: 680px; margin: 0 auto;">
-          <span class="badge badge-success" id="studentSniperBadge">AUTO-RESERVA PROGRAMADA</span>
-          <h2 style="font-size: 1.35rem; font-weight: 700; margin: 0.75rem 0 0.25rem 0;">Auto-Reserva para Mañana</h2>
-          <p class="card-desc">El sistema esperará automáticamente a las <strong>17:00:00 (5:00 PM)</strong> para capturar tu cupo antes de que se agoten.</p>
-
-          <div class="countdown-wrapper">
-            <div class="countdown-timer">
-              <span id="userCdHours">00</span>:<span id="userCdMins">00</span>:<span id="userCdSecs">00</span><span class="ms" id="userCdMs">.000</span>
-            </div>
-            <p style="font-size: 0.82rem; color: var(--slate-500); margin-top: 0.35rem;" id="userCdNotice">
-              Tiempo restante para la apertura de cupos en UNAB (17:00:00 PM)
-            </p>
-          </div>
-
-          <!-- Styled Meal Selector with immediate auto-save -->
-          <div style="background: var(--bg-subtle); padding: 1.25rem; border-radius: var(--radius-md); border: 1px solid var(--border-subtle); text-align: left; margin: 1.25rem 0;">
-            <div class="form-group" style="margin-bottom: 0;">
-              <label class="form-label">Comida que deseas asegurar para mañana:</label>
-              <select class="form-control" id="userTargetMeal">
-                <option value="ALMUERZO" selected>🍲 ALMUERZO (Recomendado)</option>
-                <option value="CENA">🌙 CENA</option>
-                <option value="DESAYUNO">☕ DESAYUNO</option>
-              </select>
-            </div>
-            <p style="font-size: 0.78rem; color: var(--emerald); font-weight: 600; margin-top: 0.5rem;">
-              ✓ Tu selección queda activa automáticamente. No requieres pulsar botones adicionales.
-            </p>
-          </div>
+      <!-- Student Tab 1: Image 2 Style - 3 Side-by-side Meal Cards with Advance Booking -->
+      <div class="tab-pane active" id="student-tab-meals">
+        
+        <!-- Header from Image 2 -->
+        <div class="unab-header-section">
+          <p class="unab-date-badge" id="studentHeaderDate">Jueves, 1 De Octubre</p>
+          <h2 class="unab-main-title">Reserva tu comida</h2>
+          <p class="unab-subtitle">Perfil actual: <strong>libre</strong> · sede <strong>La Florida</strong></p>
         </div>
+
+        <!-- Blue Banner from Image 2 -->
+        <div class="unab-campus-banner">
+          <div class="unab-banner-indicator"></div>
+          <span>Tu sede principal <strong>La Florida</strong> Periodo <strong>2026-2</strong></span>
+        </div>
+
+        <!-- Intuitive Date Switcher for Advance Booking (Mañana vs Hoy) -->
+        <div class="advance-toggle-shelf">
+          <button class="btn btn-primary btn-sm active" id="btnViewTomorrow">
+            📅 Reserva Anticipada para Mañana (<span id="lblTomorrowDate">--</span>)
+          </button>
+          <button class="btn btn-secondary btn-sm" id="btnViewToday">
+            🕒 Ver Disponibilidad de Hoy (<span id="lblTodayDate">--</span>)
+          </button>
+        </div>
+
+        <!-- 3 MEAL CARDS (DESAYUNO, ALMUERZO, CENA) - REPLICA IMAGEN 2 -->
+        <div class="grid-3 unab-cards-container" id="studentMealCardsContainer">
+          <!-- Populated dynamically via JS with exact Imagen 2 design -->
+        </div>
+
       </div>
 
-      <!-- Student Tab 2: Menu & Live Availability -->
-      <div class="tab-pane" id="student-tab-menu">
-        <div class="card">
-          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
-            <div>
-              <h2 class="card-title">Disponibilidad de Platos</h2>
-              <p class="card-desc">Consulta los cupos libres o si ya se encuentran agotados.</p>
-            </div>
-            <div style="display: flex; gap: 0.5rem;">
-              <input type="date" class="form-control" id="menuFilterDate" style="max-width: 160px;">
-              <button class="btn btn-secondary btn-sm" id="btnRefreshMenu">🔄 Consultar</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="grid-3" id="menuCardsHolder">
-          <!-- Dynamically populated with 'SIN PLATOS DISPONIBLES' badges -->
-        </div>
-      </div>
-
-      <!-- Student Tab 3: Tickets & QR (Image 3) -->
+      <!-- Student Tab 2: Tickets & QR -->
       <div class="tab-pane" id="student-tab-tickets">
         <div class="card">
           <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
@@ -328,7 +320,7 @@
         </div>
       </div>
 
-      <!-- Student Tab 4: Attendance & Status -->
+      <!-- Student Tab 3: Attendance & Status -->
       <div class="tab-pane" id="student-tab-status">
         <div class="grid-2">
           <div class="card">
@@ -347,7 +339,7 @@
             </div>
 
             <p style="font-size: 0.85rem; color: var(--emerald); font-weight: 600;">
-              ✅ Tu cuenta está 100% habilitada para reservar almuerzos.
+              ✅ Tu cuenta está 100% habilitada para reservar comidas.
             </p>
           </div>
 

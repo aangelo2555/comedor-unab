@@ -661,3 +661,211 @@ select.form-control option {
     width: 100%;
   }
 }
+
+/* --------------------------------------------------------------------------
+   UNAB PORTAL EXACT REPLICA STYLES (IMAGEN 2)
+   -------------------------------------------------------------------------- */
+.unab-header-section {
+  margin-bottom: 1.25rem;
+}
+
+.unab-date-badge {
+  font-size: 0.88rem;
+  color: var(--slate-500);
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+}
+
+.unab-main-title {
+  font-size: 1.65rem;
+  font-weight: 700;
+  color: var(--navy-primary);
+  line-height: 1.2;
+}
+
+.unab-subtitle {
+  font-size: 0.9rem;
+  color: var(--slate-600);
+  margin-top: 0.25rem;
+}
+
+.unab-campus-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  background: #f0f7fc;
+  border-left: 4px solid var(--navy-primary);
+  border-radius: var(--radius-sm);
+  padding: 0.85rem 1.15rem;
+  margin-bottom: 1.5rem;
+  font-size: 0.92rem;
+  color: var(--slate-800);
+}
+
+.advance-toggle-shelf {
+  display: flex;
+  gap: 0.65rem;
+  margin-bottom: 1.5rem;
+  flex-wrap: wrap;
+}
+
+.advance-toggle-shelf .btn {
+  border-radius: var(--radius-full);
+  padding: 0.45rem 1rem;
+  font-size: 0.85rem;
+}
+
+/* UNAB Meal Card (Imagen 2) */
+.unab-card {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 1.35rem;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  box-shadow: var(--shadow-sm);
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+
+.unab-card:hover {
+  box-shadow: var(--shadow-md);
+}
+
+.unab-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 0.35rem;
+}
+
+.unab-card-title {
+  font-size: 1.25rem;
+  font-weight: 700;
+  color: var(--slate-900);
+}
+
+.unab-badge-libre {
+  background: #fef9c3;
+  color: #854d0e;
+  font-size: 0.72rem;
+  font-weight: 700;
+  padding: 0.2rem 0.55rem;
+  border-radius: 4px;
+  letter-spacing: 0.04em;
+}
+
+.unab-time-row {
+  font-size: 0.82rem;
+  color: var(--slate-500);
+  font-family: var(--font-mono);
+  margin-bottom: 0.15rem;
+}
+
+.unab-campus-row {
+  font-size: 0.88rem;
+  font-weight: 700;
+  color: var(--slate-800);
+  margin-bottom: 0.85rem;
+}
+
+.unab-pill-notice {
+  background: #f0f7fc;
+  border-radius: 6px;
+  padding: 0.6rem 0.85rem;
+  font-size: 0.82rem;
+  color: var(--slate-700);
+  margin-bottom: 1.25rem;
+}
+
+.unab-quota-section {
+  margin-bottom: 1.25rem;
+}
+
+.unab-disponibles-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin-bottom: 0.5rem;
+}
+
+.unab-disponibles-num {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--slate-900);
+  line-height: 1;
+}
+
+.unab-disponibles-txt {
+  font-size: 0.85rem;
+  color: var(--slate-600);
+}
+
+.unab-despachados-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.78rem;
+  color: var(--slate-600);
+  margin-bottom: 0.4rem;
+}
+
+.unab-progress-track {
+  width: 100%;
+  height: 6px;
+  background: #e2e8f0;
+  border-radius: 3px;
+  overflow: hidden;
+}
+
+.unab-progress-fill {
+  height: 100%;
+  background: var(--navy-primary);
+  border-radius: 3px;
+}
+
+/* Button variants matching Image 2 */
+.btn-unab-disabled {
+  background: #7596b0 !important;
+  color: #ffffff !important;
+  border: none !important;
+  cursor: not-allowed !important;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 0.65rem;
+  width: 100%;
+  text-align: center;
+}
+
+.btn-unab-reserved {
+  background: #ffffff !important;
+  color: var(--navy-primary) !important;
+  border: 1px solid #cbd5e1 !important;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 0.65rem;
+  width: 100%;
+  text-align: center;
+  transition: all 0.15s ease;
+}
+
+.btn-unab-reserved:hover {
+  border-color: var(--navy-primary) !important;
+  background: var(--navy-subtle) !important;
+}
+
+.btn-unab-primary {
+  background: var(--navy-primary) !important;
+  color: #ffffff !important;
+  font-weight: 600;
+  border-radius: 6px;
+  padding: 0.65rem;
+  width: 100%;
+  border: none;
+  text-align: center;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.btn-unab-primary:hover {
+  background: var(--navy-hover) !important;
+}

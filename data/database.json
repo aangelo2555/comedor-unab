@@ -2,15 +2,16 @@
   "users": [
     {
       "id": "admin-01",
-      "username": "admin",
-      "password": "admin12345",
+      "username": "aangelo2555@gmail.com",
+      "email": "aangelo2555@gmail.com",
+      "password": "Dotamipasion12345",
       "role": "superadmin",
       "name": "Super Administrador Comedor",
       "dni": "00000000",
       "campus": "LA_FLORIDA",
       "active": true,
       "autoSniper": false,
-      "targetMeal": "ALMUERZO",
+      "targetMeal": "TODAS",
       "unabToken": "",
       "createdAt": "2026-10-01T22:44:18.232Z"
     },
@@ -25,9 +26,41 @@
       "active": true,
       "autoSniper": true,
       "targetMeal": "ALMUERZO",
-      "unabToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZHVzdWFyaW8iOiJiZDI3NDNlOC00OTk0LTRhOWItYjA0NC05MzA2MTAwZTM4NjEiLCJ1c2VyX2Z1bGxuYW1lIjoiU0VSTkEgU0lNRU9OLCBBTkdFTE8gVEhPTUFTIiwidXNlcl9uYW1lIjoiMjIyLjAxMTMuMDI4IiwidXNlcl9lbWFpbF91bmFiIjoiYXNlcm5hMjIyQHVuYWIuZWR1LnBlIiwidGlwb19uYW1lIjoiRXN0dWRpYW50ZXMiLCJkYXRhUm9sZXMiOlt7ImNvZGVfbW9kdWxlIjoidGlja2V0cy1kZXYudW5hYi5lZHUucGUiLCJ0aWNrZXRfc2NvcGUiOiJTRUxGIn1dLCJpYXQiOjE3OTA4OTU5NDEsImV4cCI6MTc5MDkyNDc0MX0.p_O4Bj3Yfg0aufwpOEB954clEnhv5Qh8rFcjvPlsISU",
+      "unabToken": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpZHVzdWFyaW8iOiJiZDI3NDNlOC00OTk0LTRhOWItYjA0NC05MzA2MTAwZTM4NjEiLCJ1c2VyX2Z1bGxuYW1lIjoiU0VSTkEgU0lNRU9OLCBBTkdFTE8gVEhPTUFTIiwidXNlcl9uYW1lIjoiMjIyLjAxMTMuMDI4IiwidXNlcl9lbWFpbF91bmFiIjoiYXNlcm5hMjIyQHVuYWIuZWR1LnBlIiwidGlwb19uYW1lIjoiRXN0dWRpYW50ZXMiLCJkYXRhUm9sZXMiOlt7ImNvZGVfbW9kdWxlIjoidGlja2V0cy1kZXYudW5hYi5lZHUucGUiLCJ0aWNrZXRfc2NvcGUiOiJTRUxGIn1dLCJpYXQiOjE3OTA4OTgzMDYsImV4cCI6MTc5MDkyNzEwNn0.zXF5trZCEj0U-QoEtHzCJK2g5Pg3RpCjPA76mPx7j7s",
       "createdAt": "2026-10-01T22:44:18.270Z",
-      "lastLogin": "2026-10-01T23:05:39.735Z"
+      "lastLogin": "2026-10-01T23:45:05.239Z"
+    }
+  ],
+  "advanceReservations": [
+    {
+      "id": "adv-1790898305898-ace1ce",
+      "alumnoCodigo": "222.0113.028",
+      "alumnoNombre": "SERNA SIMEON, ANGELO THOMAS",
+      "alumnoDni": "76448557",
+      "tipoComida": "DESAYUNO",
+      "fecha": "2026-10-02",
+      "campus": "LA_FLORIDA",
+      "status": "PAUSADA",
+      "programacionId": null,
+      "qrToken": null,
+      "ticketId": null,
+      "autoSniper": true,
+      "createdAt": "2026-10-01T23:45:05.898Z"
+    },
+    {
+      "id": "adv-1790898304296-ac6f96",
+      "alumnoCodigo": "222.0113.028",
+      "alumnoNombre": "SERNA SIMEON, ANGELO THOMAS",
+      "alumnoDni": "76448557",
+      "tipoComida": "ALMUERZO",
+      "fecha": "2026-10-02",
+      "campus": "LA_FLORIDA",
+      "status": "ACTIVA",
+      "programacionId": null,
+      "qrToken": null,
+      "ticketId": null,
+      "autoSniper": true,
+      "createdAt": "2026-10-01T23:45:04.296Z"
     }
   ],
   "reservas": [
@@ -59,6 +92,54 @@
     "soundAlert": true
   },
   "auditLogs": [
+    {
+      "id": "log-1790898306829-461",
+      "time": "6:45:06 p. m.",
+      "date": "2026-10-01",
+      "message": "Administrador modificó cita adv-1790898305898-ace1ce a estado: PAUSADA.",
+      "type": "info",
+      "timestamp": 1790898306829
+    },
+    {
+      "id": "log-1790898306820-137",
+      "time": "6:45:06 p. m.",
+      "date": "2026-10-01",
+      "message": "Estado de cita DESAYUNO (SERNA SIMEON, ANGELO THOMAS) cambiado a: PAUSADA",
+      "type": "info",
+      "timestamp": 1790898306821
+    },
+    {
+      "id": "log-1790898305901-966",
+      "time": "6:45:05 p. m.",
+      "date": "2026-10-01",
+      "message": "Cita anticipada registrada: DESAYUNO para SERNA SIMEON, ANGELO THOMAS (2026-10-02).",
+      "type": "info",
+      "timestamp": 1790898305901
+    },
+    {
+      "id": "log-1790898304299-645",
+      "time": "6:45:04 p. m.",
+      "date": "2026-10-01",
+      "message": "Cita anticipada registrada: ALMUERZO para SERNA SIMEON, ANGELO THOMAS (2026-10-02).",
+      "type": "info",
+      "timestamp": 1790898304300
+    },
+    {
+      "id": "log-1790898303831-127",
+      "time": "6:45:03 p. m.",
+      "date": "2026-10-01",
+      "message": "Inicio de sesión de 222.0113.028 (user).",
+      "type": "info",
+      "timestamp": 1790898303832
+    },
+    {
+      "id": "log-1790898303496-566",
+      "time": "6:45:03 p. m.",
+      "date": "2026-10-01",
+      "message": "Inicio de sesión de aangelo2555@gmail.com (superadmin).",
+      "type": "info",
+      "timestamp": 1790898303502
+    },
     {
       "id": "log-1790896954671-98",
       "time": "6:22:34 p. m.",
