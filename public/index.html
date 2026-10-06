@@ -115,6 +115,40 @@
 
       <!-- Admin Tab 2: Intelligent Multi-Meal Scheduled Mass Sniper -->
       <div class="tab-pane" id="admin-tab-sniper">
+        <!-- Railway 24/7 Autopilot Telemetry Banner -->
+        <div class="card" style="margin-bottom: 1.25rem; border-left: 4px solid var(--emerald); background: linear-gradient(135deg, rgba(5,150,105,0.04), rgba(7,64,107,0.03));">
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
+            <div>
+              <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
+                <span class="badge badge-success" style="font-weight: 700;">🟢 MOTOR FERROVIARIO AUTOMÁTICO (RAILWAY 24/7)</span>
+                <span class="badge badge-neutral" id="railwayNextOpeningBadge">Próxima apertura: --</span>
+              </div>
+              <h3 style="margin: 0.4rem 0 0.2rem 0; font-size: 1.15rem; color: var(--navy-primary);">Automatismo Inteligente por Citas Anticipadas</h3>
+              <p style="font-size: 0.82rem; color: var(--slate-600); margin: 0;">
+                El francotirador solo se activará si hay al menos una cita anticipada activa para esa comida. Si no hay citas, permanece en reposo.
+              </p>
+            </div>
+            <div style="text-align: right;">
+              <span class="badge badge-warning" id="railwayNextAdvanceCount">0 reservas registradas</span>
+            </div>
+          </div>
+
+          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 0.75rem; margin-top: 1rem;">
+            <div style="background: #ffffff; padding: 0.75rem 1rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+              <span style="font-size: 0.72rem; color: var(--slate-500); font-weight: 600;">ESTADO FRANCOTIRADOR</span>
+              <div style="font-size: 0.92rem; font-weight: 700; color: var(--navy-primary); margin-top: 0.2rem;" id="autoSniperLiveStatus">En Reposo (0 citas)</div>
+            </div>
+            <div style="background: #ffffff; padding: 0.75rem 1rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+              <span style="font-size: 0.72rem; color: var(--slate-500); font-weight: 600;">ESTADO CENTINELA DE LIBERADOS</span>
+              <div style="font-size: 0.92rem; font-weight: 700; color: var(--emerald); margin-top: 0.2rem;" id="autoSentinelLiveStatus">En Reposo (Auto-apagado)</div>
+            </div>
+            <div style="background: #ffffff; padding: 0.75rem 1rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
+              <span style="font-size: 0.72rem; color: var(--slate-500); font-weight: 600;">COLA DE LIBERADOS EN VIVO</span>
+              <div style="font-size: 0.92rem; font-weight: 700; color: #d97706; margin-top: 0.2rem;" id="autoQueueLiveCount">0 alumnos en cola</div>
+            </div>
+          </div>
+        </div>
+
         <div class="grid-2">
           <div class="card sniper-box">
             <span class="badge badge-success" id="adminSniperStatusBadge">PROGRAMACIÓN INTELIGENTE ACTIVA</span>
@@ -123,10 +157,10 @@
 
             <div style="background: var(--bg-subtle); padding: 1rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); margin: 1.25rem 0; text-align: left;">
               <div style="font-size: 0.82rem; color: var(--slate-700); margin-bottom: 0.5rem;">
-                <strong>Estado del Sistema:</strong> <span id="adminSniperSystemStatus" style="color: var(--emerald); font-weight: 600;">Listo para auto-disparo</span>
+                <strong>Estado del Sistema:</strong> <span id="adminSniperSystemStatus" style="color: var(--emerald); font-weight: 600;">Listo para auto-disparo / centinela</span>
               </div>
               <div style="font-size: 0.8rem; color: var(--slate-500);">
-                Los cupos se procesarán automáticamente según las citas anticipadas que cada alumno tenga activas.
+                Motor centinela reactivo: monitorea cupos liberados en tiempo real y ejecuta reservas automáticas inmediatas para los 3 servicios.
               </div>
             </div>
 
@@ -136,10 +170,10 @@
                 <label class="form-label">Comida Objetivo</label>
                 <select class="form-control" id="adminSniperMealSelect">
                   <option value="INTELIGENTE" selected>🎯 MODO INTELIGENTE (Multi-Comida según Citas)</option>
-                  <option value="ALMUERZO">🍲 Solo ALMUERZO (Apertura 17:00)</option>
+                  <option value="ALMUERZO">🍲 Solo ALMUERZO (11:00 - 16:00)</option>
                   <option value="DESAYUNO">☕ Solo DESAYUNO (06:30 - 10:30)</option>
                   <option value="CENA">🌙 Solo CENA (17:00 - 19:00)</option>
-                  <option value="TODAS">⚡ TODAS LAS COMIDAS</option>
+                  <option value="TODAS">⚡ TODAS LAS COMIDAS (3 Servicios)</option>
                 </select>
               </div>
               <div class="form-group">
@@ -148,9 +182,23 @@
               </div>
             </div>
 
+            <!-- Time Input (Auto-synced with selected meal) -->
+            <div style="margin-bottom: 1.25rem; text-align: left;">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label">Hora Programada de Apertura (Lima UTC-5)</label>
+                <input type="time" step="1" class="form-control" id="adminSniperTimeInput" value="11:00:00">
+              </div>
+            </div>
+
             <div style="display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap;">
-              <button class="btn btn-primary" id="btnAdminArmSniper" style="flex: 1; min-width: 200px;">
-                🚀 Armar Francotirador a las 17:00
+              <button class="btn btn-primary" id="btnAdminArmSniper" style="flex: 1; min-width: 180px;">
+                🚀 Armar Francotirador a las 11:00
+              </button>
+              <button class="btn btn-secondary" id="btnAdminStartSentinel" style="flex: 1; min-width: 180px;" title="Monitoreo continuo para atrapar cupos liberados por cancelaciones">
+                🛡️ Activar Centinela de Liberados
+              </button>
+              <button class="btn btn-secondary btn-sm" id="btnAdminStopAll" title="Detener francotirador y centinela">
+                ⏹️ Detener
               </button>
               <button class="btn btn-secondary btn-sm" id="btnAdminForceFire" title="Disparo inmediato de prueba">
                 ⚡ Forzar Disparo Inmediato
@@ -158,28 +206,72 @@
             </div>
           </div>
 
-          <!-- Official Schedule Info Card -->
+          <!-- Official Schedule Info Card (Valores reales de UNAB API) -->
           <div class="card">
             <h2 class="card-title">Ventanas de Atención Oficial UNAB</h2>
-            <p class="card-desc">Horarios de comedor aprobados por Bienestar Universitario.</p>
+            <p class="card-desc">Horarios oficiales del comedor aprobados por Bienestar Universitario y sincronizados con la API.</p>
             
             <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-top: 1rem;">
               <div style="background: var(--bg-subtle); padding: 0.85rem; border-radius: var(--radius-sm); border-left: 3px solid var(--amber);">
-                <strong>☕ Desayuno</strong>
-                <p style="font-size: 0.82rem; color: var(--slate-600);">Horario de atención: 06:30:00 - 10:30:00</p>
-                <p style="font-size: 0.75rem; color: var(--slate-500); margin-top: 0.2rem;">Reserva anticipada disponible para el día siguiente.</p>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <strong>☕ Desayuno</strong>
+                  <span class="badge badge-neutral" style="font-size: 0.7rem;">06:30 - 10:30</span>
+                </div>
+                <p style="font-size: 0.82rem; color: var(--slate-600); margin-top: 0.25rem;">Horario oficial de atención y reserva: 06:30:00 - 10:30:00</p>
+                <p style="font-size: 0.75rem; color: var(--slate-500); margin-top: 0.2rem;">Captura automática y monitoreo de cancelaciones activas.</p>
               </div>
               <div style="background: var(--bg-subtle); padding: 0.85rem; border-radius: var(--radius-sm); border-left: 3px solid var(--navy-primary);">
-                <strong>🍲 Almuerzo (Principal)</strong>
-                <p style="font-size: 0.82rem; color: var(--slate-600);">Horario de atención: 11:00:00 - 15:30:00</p>
-                <p style="font-size: 0.75rem; color: var(--emerald); font-weight: 600; margin-top: 0.2rem;">Apertura oficial de cupos: 17:00:00 PM del día anterior.</p>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <strong>🍲 Almuerzo (Principal)</strong>
+                  <span class="badge badge-neutral" style="font-size: 0.7rem;">11:00 - 16:00</span>
+                </div>
+                <p style="font-size: 0.82rem; color: var(--slate-600); margin-top: 0.25rem;">Horario oficial de atención y reserva: 11:00:00 - 16:00:00</p>
+                <p style="font-size: 0.75rem; color: var(--emerald); font-weight: 600; margin-top: 0.2rem;">Centinela activo: Detecta cupos liberados durante el horario de atención.</p>
               </div>
               <div style="background: var(--bg-subtle); padding: 0.85rem; border-radius: var(--radius-sm); border-left: 3px solid #7e22ce;">
-                <strong>🌙 Cena</strong>
-                <p style="font-size: 0.82rem; color: var(--slate-600);">Horario de atención: 17:00:00 - 19:00:00</p>
-                <p style="font-size: 0.75rem; color: var(--slate-500); margin-top: 0.2rem;">Reserva anticipada habilitada según cupos libres.</p>
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                  <strong>🌙 Cena</strong>
+                  <span class="badge badge-neutral" style="font-size: 0.7rem;">17:00 - 19:00</span>
+                </div>
+                <p style="font-size: 0.82rem; color: var(--slate-600); margin-top: 0.25rem;">Horario oficial de atención y reserva: 17:00:00 - 19:00:00</p>
+                <p style="font-size: 0.75rem; color: var(--slate-500); margin-top: 0.2rem;">Apertura a las 17:00:00 con sondeo continuo de tickets libres.</p>
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- Live Sentinel Queue Section (Visualización en tiempo real de la cola) -->
+        <div class="card" style="margin-top: 1.25rem;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;">
+            <div>
+              <h2 class="card-title">🛡️ Cola en Vivo del Centinela (Cupos Liberados)</h2>
+              <p class="card-desc">
+                Alumnos en espera activa de cancelaciones o cupos liberados. El Centinela se apaga automáticamente cuando todos reciben su ticket.
+              </p>
+            </div>
+            <div style="display: flex; align-items: center; gap: 0.5rem;">
+              <span class="badge badge-neutral" id="sentinelQueueCountBadge">0 en cola</span>
+              <button class="btn btn-secondary btn-sm" id="btnRefreshSentinelQueue">🔄 Actualizar</button>
+            </div>
+          </div>
+
+          <div class="table-container">
+            <table class="table" id="tableSentinelQueue">
+              <thead>
+                <tr>
+                  <th>Alumno / Código</th>
+                  <th>DNI</th>
+                  <th>Comida</th>
+                  <th>Fecha</th>
+                  <th>Hora de Entrada en Cola</th>
+                  <th>Estado</th>
+                  <th>Acción</th>
+                </tr>
+              </thead>
+              <tbody id="sentinelQueueTableBody">
+                <!-- Injected via JS -->
+              </tbody>
+            </table>
           </div>
         </div>
       </div>

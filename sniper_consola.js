@@ -110,8 +110,14 @@ async function runCliSniper() {
   }
 
   // Official opening schedule:
-  // Almuerzo: 17:00:00 del día anterior. Desayuno: apertura programada. Cena: 17:00:00.
-  const targetTimeStr = config.sniper?.targetTime || '17:00:00';
+  // DESAYUNO: 06:30:00 - 10:30:00 | ALMUERZO: 11:00:00 - 16:00:00 | CENA: 17:00:00 - 19:00:00
+  const defaultTimes = {
+    DESAYUNO: '06:30:00',
+    ALMUERZO: '11:00:00',
+    CENA: '17:00:00'
+  };
+
+  const targetTimeStr = defaultTimes[targetMeal] || config.sniper?.targetTime || '11:00:00';
   const leadTimeMs = config.sniper?.leadTimeMs ?? 250;
 
   const todayStr = getTodayLimaDate(0);
@@ -119,11 +125,11 @@ async function runCliSniper() {
   let remainingMs = targetTs - Date.now();
 
   console.log(`📅 Fecha objetivo: ${targetDateStr}`);
-  console.log(`⏰ Hora oficial:   ${targetTimeStr}`);
+  console.log(`⏰ Hora oficial:   ${targetTimeStr} (${targetMeal})`);
   console.log(`⚡ Offset disparo: -${leadTimeMs}ms\n`);
 
   if (remainingMs < -60000 || remainingMs <= 0) {
-    console.log(`🚀 Disparando captura de cupos para ${targetMeal}...`);
+    console.log(`🚀 Disparando captura / centinela de cupos para ${targetMeal}...`);
     await executeBurst(targetDateStr, targetMeal);
     return;
   }

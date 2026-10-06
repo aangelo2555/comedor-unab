@@ -12,6 +12,16 @@ if %ERRORLEVEL% equ 0 (
 )
 
 :: 2. Check Codex runtime node
+if exist "%LOCALAPPDATA%\OpenAI\Codex\runtimes\cua_node\81ea4d5168ddd0a3\bin\node.exe" (
+    set "NODE_CMD=%LOCALAPPDATA%\OpenAI\Codex\runtimes\cua_node\81ea4d5168ddd0a3\bin\node.exe"
+    goto :FoundNode
+)
+
+if exist "%USERPROFILE%\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe" (
+    set "NODE_CMD=%USERPROFILE%\.cache\codex-runtimes\codex-primary-runtime\dependencies\node\bin\node.exe"
+    goto :FoundNode
+)
+
 if exist "%LOCALAPPDATA%\OpenAI\Codex\runtimes\cua_node\13827bafdc0b5422\bin\node.exe" (
     set "NODE_CMD=%LOCALAPPDATA%\OpenAI\Codex\runtimes\cua_node\13827bafdc0b5422\bin\node.exe"
     goto :FoundNode
@@ -19,6 +29,10 @@ if exist "%LOCALAPPDATA%\OpenAI\Codex\runtimes\cua_node\13827bafdc0b5422\bin\nod
 
 :: 3. Check other common locations
 for /f "delims=" %%i in ('where /r "%LOCALAPPDATA%\OpenAI\Codex\runtimes" node.exe 2^>nul') do (
+    set "NODE_CMD=%%i"
+    goto :FoundNode
+)
+for /f "delims=" %%i in ('where /r "%USERPROFILE%\.cache" node.exe 2^>nul') do (
     set "NODE_CMD=%%i"
     goto :FoundNode
 )

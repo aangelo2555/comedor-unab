@@ -93,6 +93,182 @@
   },
   "auditLogs": [
     {
+      "id": "log-1791330796365-799",
+      "time": "6:53:16 p. m.",
+      "date": "2026-10-06",
+      "message": "ℹ️ Francotirador NO activado: No existen reservas anticipadas activas para DESAYUNO del 2026-10-06.",
+      "type": "info",
+      "timestamp": 1791330796367
+    },
+    {
+      "id": "log-1791330796345-822",
+      "time": "6:53:16 p. m.",
+      "date": "2026-10-06",
+      "message": "✅ No quedan alumnos en cola de espera. Centinela apagado automáticamente.",
+      "type": "info",
+      "timestamp": 1791330796346
+    },
+    {
+      "id": "log-1791330796340-422",
+      "time": "6:53:16 p. m.",
+      "date": "2026-10-06",
+      "message": "Cita anticipada anulada: CENA (SERNA SIMEON, ANGELO THOMAS).",
+      "type": "warning",
+      "timestamp": 1791330796341
+    },
+    {
+      "id": "log-1791330796300-194",
+      "time": "6:53:16 p. m.",
+      "date": "2026-10-06",
+      "message": "🛡️ CENTINELA ACTIVADO: Vigilando cupos liberados para 1 alumno(s) en cola (CENA del 2026-10-06)...",
+      "type": "warning",
+      "timestamp": 1791330796302
+    },
+    {
+      "id": "log-1791330795231-374",
+      "time": "6:53:15 p. m.",
+      "date": "2026-10-06",
+      "message": "Cita anticipada actualizada: CENA para SERNA SIMEON, ANGELO THOMAS (2026-10-06).",
+      "type": "info",
+      "timestamp": 1791330795232
+    },
+    {
+      "id": "log-1791330795169-432",
+      "time": "6:53:15 p. m.",
+      "date": "2026-10-06",
+      "message": "Inicio de sesión de 222.0113.028 (user).",
+      "type": "info",
+      "timestamp": 1791330795170
+    },
+    {
+      "id": "log-1791330794839-718",
+      "time": "6:53:14 p. m.",
+      "date": "2026-10-06",
+      "message": "Inicio de sesión de aangelo2555@gmail.com (superadmin).",
+      "type": "info",
+      "timestamp": 1791330794842
+    },
+    {
+      "id": "log-1791330758448-873",
+      "time": "6:52:38 p. m.",
+      "date": "2026-10-06",
+      "message": "✅ No quedan alumnos en cola de espera. Centinela apagado automáticamente.",
+      "type": "info",
+      "timestamp": 1791330758448
+    },
+    {
+      "id": "log-1791330758441-667",
+      "time": "6:52:38 p. m.",
+      "date": "2026-10-06",
+      "message": "Cita anticipada anulada: CENA (SERNA SIMEON, ANGELO THOMAS).",
+      "type": "warning",
+      "timestamp": 1791330758442
+    },
+    {
+      "id": "log-1791330758410-670",
+      "time": "6:52:38 p. m.",
+      "date": "2026-10-06",
+      "message": "🛡️ CENTINELA ACTIVADO: Vigilando cupos liberados para 1 alumno(s) en cola (CENA del 2026-10-06)...",
+      "type": "warning",
+      "timestamp": 1791330758413
+    },
+    {
+      "id": "log-1791330757651-692",
+      "time": "6:52:37 p. m.",
+      "date": "2026-10-06",
+      "message": "Cita anticipada registrada: CENA para SERNA SIMEON, ANGELO THOMAS (2026-10-06).",
+      "type": "info",
+      "timestamp": 1791330757651
+    },
+    {
+      "id": "log-1791330757599-776",
+      "time": "6:52:37 p. m.",
+      "date": "2026-10-06",
+      "message": "Inicio de sesión de 222.0113.028 (user).",
+      "type": "info",
+      "timestamp": 1791330757608
+    },
+    {
+      "id": "log-1791328728860-697",
+      "time": "6:18:48 p. m.",
+      "date": "2026-10-06",
+      "message": "Centinela detenido.",
+      "type": "info",
+      "timestamp": 1791328728861
+    },
+    {
+      "id": "log-1791328728845-79",
+      "time": "6:18:48 p. m.",
+      "date": "2026-10-06",
+      "message": "🛡️ CENTINELA INICIADO: Monitoreo reactivo de cupos liberados para ALMUERZO del 2026-10-06...",
+      "type": "info",
+      "timestamp": 1791328728846
+    },
+    {
+      "id": "log-1791328728811-287",
+      "time": "6:18:48 p. m.",
+      "date": "2026-10-06",
+      "message": "Centinela detenido.",
+      "type": "info",
+      "timestamp": 1791328728811
+    },
+    {
+      "id": "log-1791328728661-610",
+      "time": "6:18:48 p. m.",
+      "date": "2026-10-06",
+      "message": "🛡️ CENTINELA INICIADO: Monitoreo reactivo de cupos liberados para CENA del 2026-10-06...",
+      "type": "info",
+      "timestamp": 1791328728662
+    },
+    {
+      "id": "log-1791328728652-475",
+      "time": "6:18:48 p. m.",
+      "date": "2026-10-06",
+      "message": "🕒 Horario actual dentro de la ventana de CENA. Activando Centinela de captura inmediata...",
+      "type": "info",
+      "timestamp": 1791328728653
+    },
+    {
+      "id": "log-1791328728592-645",
+      "time": "6:18:48 p. m.",
+      "date": "2026-10-06",
+      "message": "Francotirador y centinela detenidos.",
+      "type": "info",
+      "timestamp": 1791328728593
+    },
+    {
+      "id": "log-1791328728517-886",
+      "time": "6:18:48 p. m.",
+      "date": "2026-10-06",
+      "message": "🎯 Francotirador armado para ALMUERZO del 2026-10-06. Hora programada: 11:00:00.",
+      "type": "info",
+      "timestamp": 1791328728517
+    },
+    {
+      "id": "log-1791328728510-90",
+      "time": "6:18:48 p. m.",
+      "date": "2026-10-06",
+      "message": "Francotirador y centinela detenidos.",
+      "type": "info",
+      "timestamp": 1791328728511
+    },
+    {
+      "id": "log-1791328728483-753",
+      "time": "6:18:48 p. m.",
+      "date": "2026-10-06",
+      "message": "🎯 Francotirador armado para DESAYUNO del 2026-10-06. Hora programada: 06:30:00.",
+      "type": "info",
+      "timestamp": 1791328728484
+    },
+    {
+      "id": "log-1791328728448-38",
+      "time": "6:18:48 p. m.",
+      "date": "2026-10-06",
+      "message": "Francotirador y centinela detenidos.",
+      "type": "info",
+      "timestamp": 1791328728469
+    },
+    {
       "id": "log-1790898306829-461",
       "time": "6:45:06 p. m.",
       "date": "2026-10-01",

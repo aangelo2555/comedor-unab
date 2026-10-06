@@ -12,7 +12,7 @@
     "campus": "LA_FLORIDA"
   },
   "sniper": {
-    "targetTime": "17:00:00",
+    "targetTime": "11:00:00",
     "targetMeal": "ALMUERZO",
     "leadTimeMs": 250,
     "concurrency": 3,

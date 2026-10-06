@@ -206,7 +206,11 @@ function initAdminPanel() {
   loadAdminUsers();
   loadAdminReservas();
   loadAdminMetrics();
+  loadSentinelQueue();
+  loadSniperStatus();
   setInterval(loadAdminMetrics, 10000);
+  setInterval(loadSentinelQueue, 4000);
+  setInterval(loadSniperStatus, 4000);
 }
 
 async function loadAdminUsers() {
@@ -462,28 +466,117 @@ document.getElementById('fileRestoreInput')?.addEventListener('change', async (e
   e.target.value = '';
 });
 
+// Official Opening Times Mapping
+const OFFICIAL_MEAL_TIMES = {
+  DESAYUNO: '06:30:00',
+  ALMUERZO: '11:00:00',
+  CENA: '17:00:00',
+  INTELIGENTE: '11:00:00',
+  TODAS: '06:30:00'
+};
+
+// Update button and time input when meal select changes
+const sniperMealSelect = document.getElementById('adminSniperMealSelect');
+const sniperTimeInput = document.getElementById('adminSniperTimeInput');
+const btnAdminArmSniper = document.getElementById('btnAdminArmSniper');
+
+sniperMealSelect?.addEventListener('change', () => {
+  const meal = sniperMealSelect.value;
+  const defaultTime = OFFICIAL_MEAL_TIMES[meal] || '11:00:00';
+  if (sniperTimeInput) sniperTimeInput.value = defaultTime;
+
+  if (btnAdminArmSniper) {
+    if (meal === 'DESAYUNO') {
+      btnAdminArmSniper.textContent = '🚀 Armar Francotirador a las 06:30';
+    } else if (meal === 'ALMUERZO') {
+      btnAdminArmSniper.textContent = '🚀 Armar Francotirador a las 11:00';
+    } else if (meal === 'CENA') {
+      btnAdminArmSniper.textContent = '🚀 Armar Francotirador a las 17:00';
+    } else {
+      btnAdminArmSniper.textContent = '🚀 Armar Centinela Multi-Horario';
+    }
+  }
+});
+
 // Intelligent Multi-Meal Sniper Controls
-document.getElementById('btnAdminArmSniper')?.addEventListener('click', async () => {
-  const meal = document.getElementById('adminSniperMealSelect').value;
-  const date = document.getElementById('adminSniperDateInput').value;
+btnAdminArmSniper?.addEventListener('click', async () => {
+  const meal = sniperMealSelect?.value || 'ALMUERZO';
+  const date = document.getElementById('adminSniperDateInput')?.value || tomorrowDateStr;
+  const targetTime = sniperTimeInput?.value || OFFICIAL_MEAL_TIMES[meal] || '11:00:00';
 
   try {
     const res = await fetch('/api/sniper/start', {
       method: 'POST',
       headers: authHeaders(),
-      body: JSON.stringify({ targetTime: '17:00:00', targetMeal: meal, targetDate: date })
+      body: JSON.stringify({ targetTime, targetMeal: meal, targetDate: date })
     });
-    if (res.ok) {
-      showToast(`Francotirador inteligente armado para ${meal} del ${date} a las 17:00:00`, 'success');
-      document.getElementById('adminSniperStatusBadge').className = 'badge badge-success';
-      document.getElementById('adminSniperStatusBadge').textContent = `ARMADO PARA ${meal} (17:00)`;
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast(`Francotirador armado para ${meal} del ${date} a las ${targetTime}`, 'success');
+      const badge = document.getElementById('adminSniperStatusBadge');
+      if (badge) {
+        badge.className = 'badge badge-success';
+        badge.textContent = `ARMADO PARA ${meal} (${targetTime.slice(0, 5)})`;
+      }
+    } else {
+      showToast(data.error || 'No se pudo armar el francotirador', 'error');
     }
-  } catch {}
+  } catch (err) {
+    showToast(`Error: ${err.message}`, 'error');
+  }
+});
+
+// Sentinel Button: Continuous Watchdog for Liberated Cupos
+document.getElementById('btnAdminStartSentinel')?.addEventListener('click', async () => {
+  const meal = sniperMealSelect?.value || 'ALMUERZO';
+  const date = document.getElementById('adminSniperDateInput')?.value || todayDateStr;
+
+  try {
+    showToast(`Activando Centinela continuo para ${meal}...`, 'info');
+    const res = await fetch('/api/sniper/sentinel/start', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({ targetMeal: meal, targetDate: date })
+    });
+    const data = await res.json();
+    if (res.ok && data.success) {
+      showToast(`🛡️ Centinela activo para ${meal}. Capturando cancelaciones y cupos liberados.`, 'success');
+      const badge = document.getElementById('adminSniperStatusBadge');
+      if (badge) {
+        badge.className = 'badge badge-warning';
+        badge.textContent = `🛡️ CENTINELA ACTIVO (${meal})`;
+      }
+      const sysStatus = document.getElementById('adminSniperSystemStatus');
+      if (sysStatus) {
+        sysStatus.textContent = `Centinela vigilando ${meal} en tiempo real`;
+      }
+    }
+  } catch (err) {
+    showToast(`Error al iniciar centinela: ${err.message}`, 'error');
+  }
+});
+
+// Stop button: halts both sniper and sentinel
+document.getElementById('btnAdminStopAll')?.addEventListener('click', async () => {
+  try {
+    const res = await fetch('/api/sniper/stop', {
+      method: 'POST',
+      headers: authHeaders()
+    });
+    const data = await res.json();
+    if (res.ok) {
+      showToast('Francotirador y centinela detenidos.', 'info');
+      loadSniperStatus();
+      loadSentinelQueue();
+    }
+  } catch (err) {
+    showToast(`Error al detener: ${err.message}`, 'error');
+  }
 });
 
 document.getElementById('btnAdminForceFire')?.addEventListener('click', async () => {
-  const meal = document.getElementById('adminSniperMealSelect').value;
-  const date = document.getElementById('adminSniperDateInput').value;
+  const meal = sniperMealSelect?.value || 'ALMUERZO';
+  const date = document.getElementById('adminSniperDateInput')?.value || todayDateStr;
   if (!confirm(`¿Disparar captura inmediata para ${meal} del ${date}?`)) return;
 
   try {
@@ -500,6 +593,148 @@ document.getElementById('btnAdminForceFire')?.addEventListener('click', async ()
     showToast('Error en disparo', 'error');
   }
 });
+
+// Live Sentinel Queue Controller (SuperAdmin)
+async function loadSentinelQueue() {
+  try {
+    const res = await fetch('/api/sniper/queue', { headers: authHeaders() });
+    const data = await res.json();
+    if (!res.ok) return;
+
+    const tbody = document.getElementById('sentinelQueueTableBody');
+    const badgeCount = document.getElementById('sentinelQueueCountBadge');
+    if (badgeCount) badgeCount.textContent = `${data.count || 0} en cola`;
+
+    if (!tbody) return;
+    tbody.innerHTML = '';
+
+    if (!data.queue || data.queue.length === 0) {
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--slate-500); padding: 1.5rem;">No hay alumnos en cola de espera en este momento.</td></tr>`;
+    } else {
+      data.queue.forEach(item => {
+        const tr = document.createElement('tr');
+        const timeStr = item.createdAt ? new Date(item.createdAt).toLocaleTimeString('es-PE', { timeZone: 'America/Lima' }) : '--:--';
+        tr.innerHTML = `
+          <td><strong>${item.studentName}</strong><div style="font-size: 0.75rem; color: var(--slate-500); font-family: var(--font-mono);">${item.studentUsername}</div></td>
+          <td>${item.studentDni || '-'}</td>
+          <td><span class="badge badge-neutral">${item.meal}</span></td>
+          <td>${item.date}</td>
+          <td>${timeStr}</td>
+          <td><span class="badge badge-warning">🛡️ En Cola (Esperando Cupo)</span></td>
+          <td>
+            <button class="btn btn-danger btn-sm" style="padding: 2px 8px; font-size: 0.72rem;" onclick="adminCancelAdvance('${item.advanceId}')">
+              Cancelar
+            </button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    // Sync status indicators
+    const statusBadge = document.getElementById('adminSniperStatusBadge');
+    const sysStatus = document.getElementById('adminSniperSystemStatus');
+    if (data.sentinelActive) {
+      if (statusBadge) {
+        statusBadge.className = 'badge badge-warning';
+        statusBadge.textContent = `🛡️ CENTINELA ACTIVO (${data.targetMeal || 'ALMUERZO'})`;
+      }
+      if (sysStatus) {
+        sysStatus.style.color = '#d97706';
+        sysStatus.textContent = `Vigilando cupos liberados cada 1.5s para ${data.count} alumno(s) en cola`;
+      }
+    } else if (data.status === 'ARMED') {
+      // Keep armed status
+    } else {
+      if (statusBadge) {
+        statusBadge.className = 'badge badge-success';
+        statusBadge.textContent = `PROGRAMACIÓN INTELIGENTE ACTIVA`;
+      }
+      if (sysStatus) {
+        sysStatus.style.color = 'var(--emerald)';
+        sysStatus.textContent = `Listo (se activará automáticamente cuando un alumno entre en cola)`;
+      }
+    }
+  } catch (err) {
+    console.error('Error loading sentinel queue:', err);
+  }
+}
+
+// Live Sniper & Railway Autopilot Telemetry (SuperAdmin)
+async function loadSniperStatus() {
+  try {
+    const res = await fetch('/api/sniper/status', { headers: authHeaders() });
+    const data = await res.json();
+    if (!res.ok) return;
+
+    // Railway Telemetry elements
+    const nextBadge = document.getElementById('railwayNextOpeningBadge');
+    if (nextBadge && data.nextOpening) {
+      nextBadge.textContent = `Próxima: ${data.nextOpening.meal} (${data.nextOpening.time})`;
+    }
+
+    const nextCount = document.getElementById('railwayNextAdvanceCount');
+    if (nextCount && data.nextOpening) {
+      const cnt = data.nextOpening.advanceCount || 0;
+      nextCount.textContent = `${cnt} cita(s) registrada(s)`;
+      nextCount.className = cnt > 0 ? 'badge badge-success' : 'badge badge-warning';
+    }
+
+    const sniperLive = document.getElementById('autoSniperLiveStatus');
+    if (sniperLive) {
+      if (data.status === 'ARMED') {
+        sniperLive.textContent = `🎯 ARMADO (${(data.targetTime || '11:00').slice(0, 5)})`;
+        sniperLive.style.color = 'var(--emerald)';
+      } else if (data.status === 'RESERVING') {
+        sniperLive.textContent = `🚀 DISPARANDO RÁFAGA...`;
+        sniperLive.style.color = '#dc2626';
+      } else if (data.nextOpening?.advanceCount > 0) {
+        sniperLive.textContent = `Listo (Armado en T-5m)`;
+        sniperLive.style.color = 'var(--navy-primary)';
+      } else {
+        sniperLive.textContent = `💤 En Reposo (0 citas)`;
+        sniperLive.style.color = 'var(--slate-500)';
+      }
+    }
+
+    const sentinelLive = document.getElementById('autoSentinelLiveStatus');
+    if (sentinelLive) {
+      if (data.sentinelActive) {
+        sentinelLive.textContent = `🛡️ ACTIVO (Vigilando liberados)`;
+        sentinelLive.style.color = '#d97706';
+      } else {
+        sentinelLive.textContent = `💤 En Reposo (Auto-apagado)`;
+        sentinelLive.style.color = 'var(--slate-500)';
+      }
+    }
+
+    const queueLive = document.getElementById('autoQueueLiveCount');
+    if (queueLive) {
+      queueLive.textContent = `${data.sentinelQueueCount || 0} alumno(s) en espera`;
+    }
+  } catch (err) {
+    console.error('Error loading sniper status:', err);
+  }
+}
+
+async function adminCancelAdvance(advId) {
+  if (!confirm('¿Deseas retirar a este alumno de la cola de espera?')) return;
+  try {
+    const res = await fetch(`/api/student/advance-reservation/${advId}`, {
+      method: 'DELETE',
+      headers: authHeaders()
+    });
+    if (res.ok) {
+      showToast('Alumno retirado de la cola.', 'info');
+      loadSentinelQueue();
+      loadAdminUsers();
+    }
+  } catch (err) {
+    showToast(err.message, 'error');
+  }
+}
+
+document.getElementById('btnRefreshSentinelQueue')?.addEventListener('click', loadSentinelQueue);
 
 // --------------------------------------------------------------------------
 // STUDENT FUNCTIONS (EXACT REPLICA OF IMAGEN 2)
@@ -578,29 +813,29 @@ async function loadStudentMealCards(targetDate) {
 
     container.innerHTML = '';
 
-    // Standard 3 Meals definition
+    // Standard 3 Meals definition (Sincronizado con API oficial UNAB)
     const mealsConfig = [
       {
         key: 'DESAYUNO',
         name: 'Desayuno',
         schedule: '06:30:00 - 10:30:00',
-        defaultTotal: 400,
+        defaultTotal: 408,
         cutoffHour: 10,
         cutoffMin: 30
       },
       {
         key: 'ALMUERZO',
         name: 'Almuerzo',
-        schedule: '11:00:00 - 15:30:00',
-        defaultTotal: 341,
-        cutoffHour: 15,
-        cutoffMin: 30
+        schedule: '11:00:00 - 16:00:00',
+        defaultTotal: 357,
+        cutoffHour: 16,
+        cutoffMin: 0
       },
       {
         key: 'CENA',
         name: 'Cena',
         schedule: '17:00:00 - 19:00:00',
-        defaultTotal: 510,
+        defaultTotal: 521,
         cutoffHour: 19,
         cutoffMin: 0
       }
@@ -637,24 +872,52 @@ async function loadStudentMealCards(targetDate) {
           </button>
         `;
       } else if (advanceAppt) {
-        buttonHtml = `
-          <button class="btn-unab-primary" style="background: #059669 !important;" onclick="cancelAdvancePrompt('${advanceAppt.id}', '${meal.name}')">
-            ✓ Cita Anticipada (Activa)
-          </button>
-        `;
+        if (isToday) {
+          buttonHtml = `
+            <button class="btn-unab-primary" style="background: #d97706 !important; border-color: #b45309 !important; box-shadow: 0 0 10px rgba(217,119,6,0.35);" onclick="cancelAdvancePrompt('${advanceAppt.id}', '${meal.name}')" title="El centinela está buscando activamente un cupo liberado">
+              🛡️ En Cola Centinela (Buscando cupo...)
+            </button>
+            <div style="text-align: center; margin-top: 6px;">
+              <small style="color: var(--slate-500); cursor: pointer; text-decoration: underline;" onclick="cancelAdvancePrompt('${advanceAppt.id}', '${meal.name}')">✕ Cancelar cola</small>
+            </div>
+          `;
+        } else {
+          buttonHtml = `
+            <button class="btn-unab-primary" style="background: #059669 !important;" onclick="cancelAdvancePrompt('${advanceAppt.id}', '${meal.name}')">
+              ✓ Cita Anticipada (Activa)
+            </button>
+            <div style="text-align: center; margin-top: 6px;">
+              <small style="color: var(--slate-500); cursor: pointer; text-decoration: underline;" onclick="cancelAdvancePrompt('${advanceAppt.id}', '${meal.name}')">✕ Cancelar cita</small>
+            </div>
+          `;
+        }
       } else if (isPastCutoff) {
         buttonHtml = `
           <button class="btn-unab-disabled" disabled>
             Horario cerrado
           </button>
         `;
-      } else {
-        // Can reserve advance
+      } else if (disponibles > 0) {
         buttonHtml = `
           <button class="btn-unab-primary" onclick="reserveAdvanceMeal('${meal.key}')">
-            Reservar Anticipadamente
+            Reservar Cupo
           </button>
         `;
+      } else {
+        // Cupos = 0
+        if (isToday) {
+          buttonHtml = `
+            <button class="btn-unab-primary" style="background: var(--navy-primary) !important;" onclick="reserveAdvanceMeal('${meal.key}')" title="Ponerse en cola y activar el centinela reactivo">
+              🛡️ Ponerse en Cola (Activar Centinela)
+            </button>
+          `;
+        } else {
+          buttonHtml = `
+            <button class="btn-unab-primary" onclick="reserveAdvanceMeal('${meal.key}')">
+              Reservar Anticipadamente
+            </button>
+          `;
+        }
       }
 
       card.innerHTML = `
@@ -662,7 +925,10 @@ async function loadStudentMealCards(targetDate) {
           <!-- Top Row: Name + Gold LIBRE Badge -->
           <div class="unab-card-header">
             <h3 class="unab-card-title">${meal.name}</h3>
-            <span class="unab-badge-libre">LIBRE</span>
+            <div style="display: flex; gap: 4px; align-items: center;">
+              ${advanceAppt && isToday ? '<span class="badge badge-warning" style="font-size: 0.68rem; font-weight: 700;">EN COLA</span>' : ''}
+              <span class="unab-badge-libre">LIBRE</span>
+            </div>
           </div>
 
           <!-- Schedule & Campus -->
@@ -894,12 +1160,31 @@ function setupSSE() {
     } catch {}
   });
 
+  src.addEventListener('sniper-status', () => {
+    if (currentAuth?.role === 'superadmin') {
+      loadSniperStatus();
+      loadSentinelQueue();
+    }
+  });
+
+  src.addEventListener('sentinel-queue-updated', () => {
+    if (currentAuth?.role === 'superadmin') {
+      loadSentinelQueue();
+      loadSniperStatus();
+    } else {
+      loadStudentMealCards(studentViewDate);
+    }
+  });
+
   src.addEventListener('reservation-status-changed', () => {
     if (currentAuth?.role === 'superadmin') {
       loadAdminUsers();
       loadAdminReservas();
+      loadSentinelQueue();
+      loadSniperStatus();
     } else {
       loadStudentMealCards(studentViewDate);
+      loadStudentTickets();
     }
   });
 
@@ -908,8 +1193,28 @@ function setupSSE() {
     if (currentAuth?.role === 'superadmin') {
       loadAdminReservas();
       loadAdminUsers();
+      loadSentinelQueue();
+      loadSniperStatus();
     } else {
       loadStudentTickets();
+      loadStudentMealCards(studentViewDate);
+    }
+  });
+
+  src.addEventListener('advance-reservation-created', () => {
+    if (currentAuth?.role === 'superadmin') {
+      loadAdminUsers();
+      loadSentinelQueue();
+      loadSniperStatus();
+    }
+  });
+
+  src.addEventListener('advance-reservation-cancelled', () => {
+    if (currentAuth?.role === 'superadmin') {
+      loadAdminUsers();
+      loadSentinelQueue();
+      loadSniperStatus();
+    } else {
       loadStudentMealCards(studentViewDate);
     }
   });

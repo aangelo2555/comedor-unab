@@ -33,13 +33,48 @@ setInterval(() => {
 // Global Sniper State (Keep timer IDs outside the object to prevent circular JSON serialization errors)
 let sniperTimerId = null;
 let sniperPollIntervalId = null;
+let sentinelIntervalId = null;
+
+const MEAL_CONFIGS = {
+  DESAYUNO: {
+    nombre: 'Desayuno',
+    defaultTargetTime: '06:30:00',
+    horaInicio: '06:30:00',
+    horaFin: '10:30:00',
+    horaReservaInicio: '06:30',
+    horaReservaFin: '10:30',
+    cutoffH: 10,
+    cutoffM: 30
+  },
+  ALMUERZO: {
+    nombre: 'Almuerzo',
+    defaultTargetTime: '11:00:00',
+    horaInicio: '11:00:00',
+    horaFin: '16:00:00',
+    horaReservaInicio: '11:00',
+    horaReservaFin: '16:00',
+    cutoffH: 16,
+    cutoffM: 0
+  },
+  CENA: {
+    nombre: 'Cena',
+    defaultTargetTime: '17:00:00',
+    horaInicio: '17:00:00',
+    horaFin: '19:00:00',
+    horaReservaInicio: '17:00',
+    horaReservaFin: '19:00',
+    cutoffH: 19,
+    cutoffM: 0
+  }
+};
 
 const globalSniper = {
   running: false,
-  status: 'IDLE', // IDLE, ARMED, RESERVING, FINISHED
-  targetTime: '17:00:00',
-  targetDate: getTodayLimaDate(1), // Default: Mañana
+  status: 'IDLE', // IDLE, ARMED, RESERVING, SENTINEL, FINISHED
+  targetTime: '11:00:00',
+  targetDate: getTodayLimaDate(0),
   targetMeal: 'ALMUERZO',
+  mode: 'SCHEDULED', // SCHEDULED, SENTINEL
   leadTimeMs: 250,
   lastRunResults: []
 };
@@ -164,37 +199,153 @@ async function getValidUnabToken(userRecord) {
   return null;
 }
 
-// Multi-User Sniper Engine (Non-invasive, Schedule-aware, Multi-Meal Intelligent)
-function startGlobalSniper(options = {}) {
-  stopGlobalSniper();
+// Master Railway 24/7 Scheduler Daemon (Autopilot for Desayuno, Almuerzo, and Cena)
+let masterSchedulerIntervalId = null;
+let lastSchedulerLogTime = 0;
+let lastSchedulerEvaluatedMeal = '';
 
-  globalSniper.targetTime = options.targetTime || '17:00:00';
-  globalSniper.targetDate = options.targetDate || getTodayLimaDate(1);
-  globalSniper.targetMeal = (options.targetMeal || 'INTELIGENTE').toUpperCase();
+function getNextMealOpening() {
+  const todayLima = getTodayLimaDate(0);
+  const tomorrowLima = getTodayLimaDate(1);
+  const nowMs = Date.now();
+
+  const candidates = [
+    { meal: 'DESAYUNO', date: todayLima, time: '06:30:00', iso: `${todayLima}T06:30:00-05:00` },
+    { meal: 'ALMUERZO', date: todayLima, time: '11:00:00', iso: `${todayLima}T11:00:00-05:00` },
+    { meal: 'CENA', date: todayLima, time: '17:00:00', iso: `${todayLima}T17:00:00-05:00` },
+    { meal: 'DESAYUNO', date: tomorrowLima, time: '06:30:00', iso: `${tomorrowLima}T06:30:00-05:00` },
+    { meal: 'ALMUERZO', date: tomorrowLima, time: '11:00:00', iso: `${tomorrowLima}T11:00:00-05:00` },
+    { meal: 'CENA', date: tomorrowLima, time: '17:00:00', iso: `${tomorrowLima}T17:00:00-05:00` }
+  ];
+
+  for (const c of candidates) {
+    const ts = new Date(c.iso).getTime();
+    if (ts > nowMs - 2000) {
+      return { ...c, targetTs: ts, msUntil: ts - nowMs };
+    }
+  }
+
+  const defTs = new Date(`${tomorrowLima}T06:30:00-05:00`).getTime();
+  return { meal: 'DESAYUNO', date: tomorrowLima, time: '06:30:00', iso: `${tomorrowLima}T06:30:00-05:00`, targetTs: defTs, msUntil: defTs - nowMs };
+}
+
+function tickRailwayMasterScheduler() {
+  // If sniper is currently executing burst (RESERVING) or Sentinel is actively polling, do not interfere
+  if (globalSniper.status === 'RESERVING' || globalSniper.status === 'SENTINEL') {
+    return;
+  }
+
+  const next = getNextMealOpening();
+  const msUntil = next.msUntil;
+
+  // Find active advance reservations for this upcoming meal and date
+  const activeAdvance = db.getAdvanceReservations({ fecha: next.date, status: 'ACTIVA' })
+    .filter(a => a.tipoComida.toUpperCase() === next.meal.toUpperCase());
+
+  const hasAdvance = activeAdvance.length > 0;
+  // Pre-arming window: 5 minutes before opening
+  const inArmingWindow = msUntil <= 5 * 60 * 1000 && msUntil > 0;
+
+  // USER RULE:
+  // "el francotirador debe ser automático, en base si hay una reserva anticipada.
+  // Pero si no hay una reserva anticipada, el francotirador no se va a activar."
+  if (!hasAdvance) {
+    // If it was automatically armed, disarm it
+    if (globalSniper.status === 'ARMED' && globalSniper.isAutoScheduled) {
+      stopGlobalSniper(true);
+      emitLog(`ℹ️ Francotirador desarmado: 0 reservas anticipadas para ${next.meal} del ${next.date}.`, 'info');
+    }
+
+    const nowMs = Date.now();
+    if (inArmingWindow && msUntil <= 3 * 60 * 1000 && (nowMs - lastSchedulerLogTime > 60000 || lastSchedulerEvaluatedMeal !== next.meal)) {
+      lastSchedulerLogTime = nowMs;
+      lastSchedulerEvaluatedMeal = next.meal;
+      emitLog(`ℹ️ [Railway 24/7] Próxima apertura de ${next.meal} (${next.time}): 0 reservas anticipadas. Francotirador en reposo (NO se activa).`, 'info');
+    }
+    return;
+  }
+
+  // If there ARE advance reservations and we are in the arming window:
+  if (inArmingWindow) {
+    const isAlreadyArmed = globalSniper.running && 
+      globalSniper.status === 'ARMED' && 
+      globalSniper.targetMeal === next.meal && 
+      globalSniper.targetDate === next.date;
+
+    if (!isAlreadyArmed) {
+      emitLog(`🎯 [Railway 24/7] ¡${activeAdvance.length} reserva(s) anticipada(s) detectada(s)! Francotirador AUTOMÁTICO armado para ${next.meal} (${next.date} a las ${next.time}).`, 'success');
+      startGlobalSniper({
+        targetMeal: next.meal,
+        targetDate: next.date,
+        targetTime: next.time,
+        leadTimeMs: 250,
+        isAutoScheduled: true
+      });
+    }
+  }
+}
+
+// Multi-User Sniper & Sentinel Engine (Schedule-aware, Multi-Meal Intelligent, Liberation Watchdog)
+function startGlobalSniper(options = {}) {
+  stopGlobalSniper(true);
+
+  globalSniper.targetMeal = (options.targetMeal || 'ALMUERZO').toUpperCase();
+  globalSniper.targetDate = options.targetDate || getTodayLimaDate(0);
   globalSniper.leadTimeMs = Number(options.leadTimeMs || 250);
+  globalSniper.mode = options.mode || 'SCHEDULED';
+  globalSniper.isAutoScheduled = !!options.isAutoScheduled;
   globalSniper.running = true;
-  globalSniper.status = 'ARMED';
   globalSniper.lastRunResults = [];
+
+  // Determine correct target opening time:
+  const mealConfig = MEAL_CONFIGS[globalSniper.targetMeal];
+  if (options.targetTime) {
+    globalSniper.targetTime = options.targetTime;
+  } else if (mealConfig) {
+    globalSniper.targetTime = mealConfig.defaultTargetTime;
+  } else {
+    globalSniper.targetTime = '11:00:00'; // Default Almuerzo
+  }
+
+  // If user requested sentinel mode directly:
+  if (options.mode === 'SENTINEL') {
+    startSentinelWatch(options);
+    return;
+  }
+
+  globalSniper.status = 'ARMED';
 
   const [h, m, s] = globalSniper.targetTime.split(':').map(Number);
   const todayLima = getTodayLimaDate(0);
-  const triggerIso = `${todayLima}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}-05:00`;
+  const triggerIso = `${globalSniper.targetDate}T${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}:${String(s).padStart(2, '0')}-05:00`;
   let targetTs = new Date(triggerIso).getTime();
 
   let msUntilTarget = targetTs - Date.now();
-  // If target time today has passed, trigger targets tomorrow
+  // If target time today has passed by more than 1 minute:
   if (msUntilTarget < -60000) {
+    const nowLima = getLimaDateObj();
+    const curH = nowLima.getHours();
+    const curM = nowLima.getMinutes();
+    if (globalSniper.targetDate === todayLima && mealConfig) {
+      const isPastCutoff = (curH > mealConfig.cutoffH || (curH === mealConfig.cutoffH && curM >= mealConfig.cutoffM));
+      if (!isPastCutoff) {
+        emitLog(`🕒 Horario actual dentro de la ventana de ${globalSniper.targetMeal}. Activando Centinela de captura inmediata...`, 'info');
+        startSentinelWatch({ targetMeal: globalSniper.targetMeal, targetDate: globalSniper.targetDate });
+        return;
+      }
+    }
+    // If cutoff passed for today, target tomorrow's opening
     targetTs += 24 * 60 * 60 * 1000;
     msUntilTarget = targetTs - Date.now();
   }
 
-  emitLog(`🎯 Francotirador armado para ${globalSniper.targetMeal} del ${globalSniper.targetDate}. Hora: ${globalSniper.targetTime}.`, 'info');
-  broadcastSSE('sniper-status', { ...globalSniper });
+  emitLog(`🎯 Francotirador armado para ${globalSniper.targetMeal} del ${globalSniper.targetDate}. Hora programada: ${globalSniper.targetTime}.`, 'info');
+  broadcastSSE('sniper-status', { ...globalSniper, sentinelActive: !!sentinelIntervalId });
 
   // Pre-warmup 30s before target
   const warmupMs = Math.max(0, msUntilTarget - 30000);
   setTimeout(async () => {
-    if (!globalSniper.running) return;
+    if (!globalSniper.running || globalSniper.status !== 'ARMED') return;
     emitLog('🔥 Calentamiento de sesiones para alumnos activos...', 'info');
     const users = db.getAllUsers(false).filter(u => u.active && u.autoSniper && u.role !== 'superadmin');
     for (const u of users) {
@@ -209,15 +360,217 @@ function startGlobalSniper(options = {}) {
   }, triggerDelay);
 }
 
-function stopGlobalSniper() {
+function stopGlobalSniper(quiet = false) {
   if (sniperTimerId) clearTimeout(sniperTimerId);
   if (sniperPollIntervalId) clearInterval(sniperPollIntervalId);
+  if (sentinelIntervalId) clearInterval(sentinelIntervalId);
   sniperTimerId = null;
   sniperPollIntervalId = null;
+  sentinelIntervalId = null;
   globalSniper.running = false;
   globalSniper.status = 'IDLE';
-  emitLog('Francotirador detenido.', 'info');
-  broadcastSSE('sniper-status', { ...globalSniper });
+  globalSniper.isAutoScheduled = false;
+  if (!quiet) emitLog('Francotirador y centinela detenidos.', 'info');
+  broadcastSSE('sniper-status', { ...globalSniper, sentinelActive: false });
+}
+
+// Queue Management for Sentinel & Advance Reservations
+function getStudentsInSentinelQueue(filterDate = null, filterMeal = null) {
+  const targetDate = filterDate || globalSniper.targetDate || getTodayLimaDate(0);
+  const allRes = db.getAllReservations();
+  const allAdvance = db.getAdvanceReservations({ fecha: targetDate, status: 'ACTIVA' });
+  const allUsers = db.getAllUsers(false).filter(u => u.active && u.autoSniper && u.role !== 'superadmin');
+
+  const queue = [];
+
+  for (const adv of allAdvance) {
+    if (filterMeal && !['TODAS', 'INTELIGENTE'].includes(filterMeal) && adv.tipoComida.toUpperCase() !== filterMeal.toUpperCase()) {
+      continue;
+    }
+    const student = allUsers.find(u => u.username === adv.alumnoCodigo || u.dni === adv.alumnoDni);
+    if (!student) continue;
+
+    // Check if student already has a confirmed active ticket for this meal on targetDate
+    const alreadyConfirmed = allRes.some(r => 
+      (r.alumnoCodigo === student.username || r.alumnoDni === student.dni) &&
+      r.fecha === targetDate &&
+      r.tipoComida.toUpperCase() === adv.tipoComida.toUpperCase() &&
+      r.estado === 'ACTIVA'
+    );
+
+    if (!alreadyConfirmed) {
+      queue.push({
+        advanceId: adv.id,
+        studentUsername: student.username,
+        studentName: student.name,
+        studentDni: student.dni,
+        campus: student.campus,
+        meal: adv.tipoComida.toUpperCase(),
+        date: targetDate,
+        createdAt: adv.createdAt
+      });
+    }
+  }
+
+  return queue;
+}
+
+function checkAndManageSentinelQueue() {
+  const queue = getStudentsInSentinelQueue(globalSniper.targetDate, globalSniper.targetMeal);
+  if (queue.length === 0) {
+    if (sentinelIntervalId || globalSniper.status === 'SENTINEL') {
+      stopSentinelWatch(true);
+      emitLog('✅ No quedan alumnos en cola de espera. Centinela apagado automáticamente.', 'info');
+      broadcastSSE('sentinel-queue-updated', { queue: [] });
+      broadcastSSE('sniper-status', { ...globalSniper, sentinelActive: false });
+    }
+    return false;
+  }
+  return true;
+}
+
+// Sentinel Engine: Intelligently monitors for liberated cupos and turns off automatically when fulfilled or cancelled
+function startSentinelWatch(options = {}) {
+  stopSentinelWatch(true);
+
+  globalSniper.targetMeal = (options.targetMeal || globalSniper.targetMeal || 'ALMUERZO').toUpperCase();
+  globalSniper.targetDate = options.targetDate || globalSniper.targetDate || getTodayLimaDate(0);
+  globalSniper.mode = 'SENTINEL';
+  globalSniper.status = 'SENTINEL';
+  globalSniper.running = true;
+
+  const initialQueue = getStudentsInSentinelQueue(globalSniper.targetDate, globalSniper.targetMeal);
+  if (initialQueue.length === 0) {
+    emitLog(`ℹ️ Centinela no iniciado: No hay alumnos en cola de espera para ${globalSniper.targetMeal} del ${globalSniper.targetDate}.`, 'info');
+    globalSniper.status = 'IDLE';
+    globalSniper.running = false;
+    broadcastSSE('sniper-status', { ...globalSniper, sentinelActive: false });
+    broadcastSSE('sentinel-queue-updated', { queue: [] });
+    return;
+  }
+
+  emitLog(`🛡️ CENTINELA ACTIVADO: Vigilando cupos liberados para ${initialQueue.length} alumno(s) en cola (${globalSniper.targetMeal} del ${globalSniper.targetDate})...`, 'warning');
+  broadcastSSE('sniper-status', { ...globalSniper, sentinelActive: true });
+  broadcastSSE('sentinel-queue-updated', { queue: initialQueue });
+
+  let probeIndex = 0;
+  sentinelIntervalId = setInterval(async () => {
+    if (!globalSniper.running || globalSniper.status !== 'SENTINEL') {
+      stopSentinelWatch(true);
+      return;
+    }
+
+    // Check cutoff time: If meal window ended, auto-stop
+    const mealCfg = MEAL_CONFIGS[globalSniper.targetMeal];
+    if (globalSniper.targetDate === getTodayLimaDate(0) && mealCfg) {
+      const nowLima = getLimaDateObj();
+      const curH = nowLima.getHours();
+      const curM = nowLima.getMinutes();
+      if (curH > mealCfg.cutoffH || (curH === mealCfg.cutoffH && curM >= mealCfg.cutoffM)) {
+        emitLog(`⏰ Horario oficial de ${globalSniper.targetMeal} finalizó (${mealCfg.horaFin}). Centinela apagado automáticamente.`, 'info');
+        stopSentinelWatch(true);
+        globalSniper.status = 'FINISHED';
+        globalSniper.running = false;
+        broadcastSSE('sniper-status', { ...globalSniper, sentinelActive: false });
+        return;
+      }
+    }
+
+    try {
+      const currentQueue = getStudentsInSentinelQueue(globalSniper.targetDate, globalSniper.targetMeal);
+      if (currentQueue.length === 0) {
+        emitLog('✅ Todos los alumnos en cola recibieron su ticket o se canceló la solicitud. Centinela apagado automáticamente.', 'success');
+        stopSentinelWatch(true);
+        globalSniper.status = 'FINISHED';
+        globalSniper.running = false;
+        broadcastSSE('sniper-status', { ...globalSniper, sentinelActive: false });
+        broadcastSSE('sentinel-queue-updated', { queue: [] });
+        return;
+      }
+
+      // Probe menu
+      const candidateItem = currentQueue[probeIndex % currentQueue.length];
+      probeIndex++;
+      const candidateStudent = db.findUserByUsername(candidateItem.studentUsername);
+      if (!candidateStudent) return;
+      const probeToken = await getValidUnabToken(candidateStudent);
+      if (!probeToken) return;
+
+      const prog = await fetchComedorApi(`/programacion/me?date=${globalSniper.targetDate}`, probeToken);
+      if (!prog.ok || !Array.isArray(prog.data?.data) || prog.data.data.length === 0) return;
+
+      const menuFound = prog.data.data;
+
+      for (const item of currentQueue) {
+        const studentUser = db.findUserByUsername(item.studentUsername);
+        if (!studentUser) continue;
+        const sToken = await getValidUnabToken(studentUser);
+        if (!sToken) continue;
+
+        const targetItem = menuFound.find(i => (i.tipoComida || '').toUpperCase() === item.meal.toUpperCase());
+        if (!targetItem) continue;
+
+        const disponibles = targetItem.disponibleLibre ?? (targetItem.cupoLibre - (targetItem.usadoLibre ?? 0));
+        if (disponibles > 0) {
+          emitLog(`⚡ ¡¡CUPO LIBERADO DETECTADO (${disponibles} libre(s) en ${item.meal})!! Capturando para ${item.studentName}...`, 'warning');
+
+          const burstReqs = [1, 2].map(async () => {
+            return await fetchComedorApi('/reservas', sToken, {
+              method: 'POST',
+              body: JSON.stringify({ programacionId: targetItem.id })
+            });
+          });
+
+          const results = await Promise.all(burstReqs);
+          const okRes = results.find(r => r.ok && r.data?.success);
+          if (okRes) {
+            const ticket = okRes.data.data;
+            db.recordReservation({
+              id: ticket.id,
+              alumnoCodigo: item.studentUsername,
+              alumnoNombre: item.studentName,
+              alumnoDni: item.studentDni,
+              tipoComida: targetItem.tipoComida,
+              fecha: globalSniper.targetDate,
+              horaReserva: getLimaTimeString().slice(0, 8),
+              qrToken: ticket.qrToken,
+              estado: 'ACTIVA',
+              campus: item.campus
+            });
+
+            db.markAdvanceReservationConfirmed(item.advanceId, ticket);
+            emitLog(`🎉 ¡¡TICKET LIBERADO CAPTURADO CON ÉXITO para ${item.studentName}!! (${item.meal} del ${globalSniper.targetDate})`, 'success');
+            broadcastSSE('reservation-status-changed', { student: item.studentUsername, meal: item.meal, ticket });
+
+            // Re-evaluate remaining queue
+            const remainingQueue = getStudentsInSentinelQueue(globalSniper.targetDate, globalSniper.targetMeal);
+            broadcastSSE('sentinel-queue-updated', { queue: remainingQueue });
+            if (remainingQueue.length === 0) {
+              emitLog('🎉 Todos los alumnos en cola recibieron su ticket a través de Centinela. Centinela apagado automáticamente.', 'success');
+              stopSentinelWatch(true);
+              globalSniper.status = 'FINISHED';
+              globalSniper.running = false;
+              broadcastSSE('sniper-status', { ...globalSniper, sentinelActive: false });
+              return;
+            }
+          }
+        }
+      }
+    } catch (err) {
+      console.error('Error en ciclo centinela:', err);
+    }
+  }, 1500);
+}
+
+function stopSentinelWatch(quiet = false) {
+  if (sentinelIntervalId) clearInterval(sentinelIntervalId);
+  sentinelIntervalId = null;
+  if (globalSniper.status === 'SENTINEL') {
+    globalSniper.status = 'IDLE';
+    globalSniper.running = false;
+    if (!quiet) emitLog('Centinela detenido.', 'info');
+    broadcastSSE('sniper-status', { ...globalSniper, sentinelActive: false });
+  }
 }
 
 async function executeMultiUserBurst() {
@@ -225,16 +578,37 @@ async function executeMultiUserBurst() {
   globalSniper.status = 'RESERVING';
   broadcastSSE('sniper-status', { ...globalSniper });
 
-  const activeCandidates = db.getAllUsers(false).filter(u => u.active && u.autoSniper && u.role !== 'superadmin');
-  if (activeCandidates.length === 0) {
-    emitLog('No hay alumnos activos con auto-reserva o citas programadas.', 'warning');
+  // USER RULE:
+  // "El francotirador debe ser automático en base si hay una reserva anticipada.
+  // Pero si no hay una reserva anticipada, el francotirador no se va a activar."
+  const allAdvance = db.getAdvanceReservations({ fecha: globalSniper.targetDate, status: 'ACTIVA' });
+  let candidateAdvance = allAdvance;
+  if (globalSniper.targetMeal && !['TODAS', 'INTELIGENTE'].includes(globalSniper.targetMeal)) {
+    candidateAdvance = allAdvance.filter(a => a.tipoComida.toUpperCase() === globalSniper.targetMeal.toUpperCase());
+  }
+
+  if (candidateAdvance.length === 0) {
+    emitLog(`ℹ️ Francotirador NO activado: No existen reservas anticipadas activas para ${globalSniper.targetMeal} del ${globalSniper.targetDate}.`, 'info');
     globalSniper.status = 'IDLE';
     globalSniper.running = false;
     broadcastSSE('sniper-status', { ...globalSniper });
     return;
   }
 
-  emitLog(`🚀 ¡DISPARO INICIADO! Sondeando cupos para ${activeCandidates.length} alumno(s) [Modo: ${globalSniper.targetMeal}]...`, 'warning');
+  const advanceUsernames = new Set(candidateAdvance.map(a => a.alumnoCodigo));
+  const activeCandidates = db.getAllUsers(false).filter(u => 
+    u.active && advanceUsernames.has(u.username) && u.role !== 'superadmin'
+  );
+
+  if (activeCandidates.length === 0) {
+    emitLog('No hay alumnos activos vinculados a las reservas anticipadas encontradas.', 'warning');
+    globalSniper.status = 'IDLE';
+    globalSniper.running = false;
+    broadcastSSE('sniper-status', { ...globalSniper });
+    return;
+  }
+
+  emitLog(`🚀 ¡DISPARO INICIADO! Sondeando cupos para ${activeCandidates.length} alumno(s) con reserva anticipada [Modo: ${globalSniper.targetMeal}]...`, 'warning');
 
   let attempts = 0;
   const maxAttempts = 40;
@@ -249,10 +623,8 @@ async function executeMultiUserBurst() {
       clearInterval(sniperPollIntervalId);
       sniperPollIntervalId = null;
       if (globalSniper.status === 'RESERVING') {
-        globalSniper.status = 'FINISHED';
-        globalSniper.running = false;
-        emitLog('Fin del ciclo de sondeo de francotirador.', 'warning');
-        broadcastSSE('sniper-status', { ...globalSniper });
+        emitLog('Ráfaga inicial completada. Activando centinela para capturar cupos liberados durante la ventana...', 'info');
+        startSentinelWatch({ targetMeal: globalSniper.targetMeal, targetDate: globalSniper.targetDate });
       }
       return;
     }
@@ -346,10 +718,18 @@ async function executeMultiUserBurst() {
 
         const finalResults = await Promise.all(userPromises);
         globalSniper.lastRunResults = finalResults;
-        globalSniper.status = 'FINISHED';
-        globalSniper.running = false;
-        broadcastSSE('sniper-status', { ...globalSniper });
         broadcastSSE('reservation-batch-finished', finalResults);
+
+        // Check if any student failed to get tickets; if so, keep Sentinel running
+        const anyPending = finalResults.some(r => r.results?.some(res => !res.success));
+        if (anyPending) {
+          emitLog('Algunos cupos estaban agotados. Centinela continuará activo vigilando cupos liberados...', 'warning');
+          startSentinelWatch({ targetMeal: globalSniper.targetMeal, targetDate: globalSniper.targetDate });
+        } else {
+          globalSniper.status = 'FINISHED';
+          globalSniper.running = false;
+          broadcastSSE('sniper-status', { ...globalSniper });
+        }
       }
     } catch (err) {
       console.error('Error en sondeo de francotirador:', err);
@@ -741,8 +1121,8 @@ const server = http.createServer(async (req, res) => {
       if (meal === 'DESAYUNO' && (currentH > 10 || (currentH === 10 && currentM >= 30))) {
         return sendJson(400, { success: false, error: 'El horario de Desayuno para hoy (06:30 - 10:30) ya finalizó.' });
       }
-      if (meal === 'ALMUERZO' && (currentH > 15 || (currentH === 15 && currentM >= 30))) {
-        return sendJson(400, { success: false, error: 'El horario de Almuerzo para hoy (11:00 - 15:30) ya finalizó.' });
+      if (meal === 'ALMUERZO' && (currentH > 16 || (currentH === 16 && currentM > 0))) {
+        return sendJson(400, { success: false, error: 'El horario de Almuerzo para hoy (11:00 - 16:00) ya finalizó.' });
       }
       if (meal === 'CENA' && (currentH > 19 || (currentH === 19 && currentM >= 0))) {
         return sendJson(400, { success: false, error: 'El horario de Cena para hoy (17:00 - 19:00) ya finalizó.' });
@@ -807,13 +1187,23 @@ const server = http.createServer(async (req, res) => {
 
     broadcastSSE('advance-reservation-created', advance);
 
+    // If ticket was not confirmed immediately (cupos were 0) and reservation is for today:
+    // AUTOMATICALLY ACTIVATE THE SENTINEL to catch freed/cancelled tickets!
+    if (!confirmedTicket && date === todayLima) {
+      startSentinelWatch({ targetMeal: meal, targetDate: date });
+    }
+
+    // Trigger Railway master scheduler to evaluate upcoming openings
+    tickRailwayMasterScheduler();
+
     return sendJson(200, {
       success: true,
       data: advance,
       confirmedTicket,
+      inQueue: !confirmedTicket,
       message: confirmedTicket
         ? `¡Ticket oficial UNAB de ${meal} reservado con éxito!`
-        : `¡Cita anticipada registrada para ${meal} del ${date}! El sistema capturará tu cupo automáticamente.`
+        : `¡Te has puesto en cola para ${meal}! El Centinela se ha activado y capturará un cupo liberado automáticamente.`
     });
   }
 
@@ -825,8 +1215,14 @@ const server = http.createServer(async (req, res) => {
 
     const advId = pathname.replace('/api/student/advance-reservation/', '');
     db.cancelAdvanceReservation(advId);
+
+    // If student cancels their advance reservation/queue spot, check queue and auto-shutdown Sentinel if empty
+    checkAndManageSentinelQueue();
+    tickRailwayMasterScheduler();
+
     broadcastSSE('advance-reservation-cancelled', { id: advId });
-    return sendJson(200, { success: true, message: 'Cita anticipada anulada.' });
+    broadcastSSE('sentinel-queue-updated', { queue: getStudentsInSentinelQueue(globalSniper.targetDate, globalSniper.targetMeal) });
+    return sendJson(200, { success: true, message: 'Cita anticipada anulada. Cola de centinela actualizada.' });
   }
 
   // --- COMEDOR API (STUDENT & GENERAL) ---
@@ -945,8 +1341,24 @@ const server = http.createServer(async (req, res) => {
 
   // GET /api/sniper/status
   if (pathname === '/api/sniper/status' && req.method === 'GET') {
+    const nextOpening = getNextMealOpening();
+    const activeAdvanceForNext = db.getAdvanceReservations({ fecha: nextOpening.date, status: 'ACTIVA' })
+      .filter(a => a.tipoComida.toUpperCase() === nextOpening.meal.toUpperCase());
+    const queue = getStudentsInSentinelQueue(globalSniper.targetDate, globalSniper.targetMeal);
+
     return sendJson(200, {
       ...globalSniper,
+      mealConfigs: MEAL_CONFIGS,
+      sentinelActive: !!sentinelIntervalId,
+      sentinelQueueCount: queue.length,
+      nextOpening: {
+        meal: nextOpening.meal,
+        date: nextOpening.date,
+        time: nextOpening.time,
+        advanceCount: activeAdvanceForNext.length,
+        msUntil: nextOpening.msUntil
+      },
+      railwaySchedulerActive: true,
       activeCandidatesCount: db.getAllUsers(true).filter(u => u.active && u.autoSniper).length,
       serverTime: getLimaTimeString()
     });
@@ -956,13 +1368,40 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/sniper/start' && req.method === 'POST') {
     const body = await parseJsonBody(req);
     startGlobalSniper(body);
-    return sendJson(200, { success: true, sniper: { ...globalSniper } });
+    return sendJson(200, { success: true, sniper: { ...globalSniper, sentinelActive: !!sentinelIntervalId } });
   }
 
   // POST /api/sniper/stop
   if (pathname === '/api/sniper/stop' && req.method === 'POST') {
     stopGlobalSniper();
-    return sendJson(200, { success: true, sniper: { ...globalSniper } });
+    return sendJson(200, { success: true, sniper: { ...globalSniper, sentinelActive: false } });
+  }
+
+  // POST /api/sniper/sentinel/start
+  if (pathname === '/api/sniper/sentinel/start' && req.method === 'POST') {
+    const body = await parseJsonBody(req);
+    startSentinelWatch(body);
+    return sendJson(200, { success: true, sniper: { ...globalSniper, sentinelActive: true } });
+  }
+
+  // GET /api/sniper/queue
+  if (pathname === '/api/sniper/queue' && req.method === 'GET') {
+    const queue = getStudentsInSentinelQueue(globalSniper.targetDate, globalSniper.targetMeal);
+    return sendJson(200, {
+      success: true,
+      queue,
+      count: queue.length,
+      sentinelActive: !!sentinelIntervalId,
+      status: globalSniper.status,
+      targetMeal: globalSniper.targetMeal,
+      targetDate: globalSniper.targetDate
+    });
+  }
+
+  // POST /api/sniper/sentinel/stop
+  if (pathname === '/api/sniper/sentinel/stop' && req.method === 'POST') {
+    stopSentinelWatch();
+    return sendJson(200, { success: true, sniper: { ...globalSniper, sentinelActive: false } });
   }
 
   // --- STATIC FILE SERVING ---
@@ -1004,4 +1443,8 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`🕒 Hora Perú: ${getLimaTimeString()} (America/Lima)`);
   console.log(`🚂 Listo para despliegue en Railway`);
   console.log(`======================================================\n`);
+
+  // Start the 24/7 Master Railway Scheduler
+  masterSchedulerIntervalId = setInterval(tickRailwayMasterScheduler, 5000);
+  tickRailwayMasterScheduler();
 });
