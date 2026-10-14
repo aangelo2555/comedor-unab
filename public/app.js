@@ -490,24 +490,27 @@ async function loadSentinelQueue() {
 
     const tbody = document.getElementById('sentinelQueueTableBody');
     const badgeCount = document.getElementById('sentinelQueueCountBadge');
-    if (badgeCount) badgeCount.textContent = `${data.count || 0} en cola`;
+    if (badgeCount) badgeCount.textContent = `${data.totalPendingCount ?? (data.count || 0)} registrada(s)`;
 
     if (!tbody) return;
     tbody.innerHTML = '';
 
     if (!data.queue || data.queue.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--slate-500); padding: 1.5rem;">No hay alumnos en cola activa en este momento.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--slate-500); padding: 1.5rem;">No hay alumnos con reservas anticipadas en este momento.</td></tr>`;
     } else {
       data.queue.forEach(item => {
         const tr = document.createElement('tr');
         const timeStr = item.createdAt ? new Date(item.createdAt).toLocaleTimeString('es-PE', { timeZone: 'America/Lima' }) : '--:--';
+        const statusBadgeClass = item.isSentinel ? 'badge-warning' : 'badge-neutral';
+        const statusText = item.statusText || (item.isSentinel ? 'En Cola Centinela (Liberados)' : 'Reserva Anticipada');
+
         tr.innerHTML = `
           <td><strong>${item.studentName}</strong><div style="font-size: 0.74rem; color: var(--slate-500); font-family: var(--font-mono);">${item.studentUsername}</div></td>
           <td>${item.studentDni || '-'}</td>
           <td><span class="badge badge-neutral">${item.meal}</span></td>
           <td>${item.date}</td>
           <td>${timeStr}</td>
-          <td><span class="badge badge-warning">En Cola de Cupos</span></td>
+          <td><span class="badge ${statusBadgeClass}">${statusText}</span></td>
           <td>
             <button class="btn btn-danger btn-sm" onclick="adminCancelAdvance('${item.advanceId}')">
               Cancelar
@@ -526,7 +529,7 @@ async function loadSentinelQueue() {
         statusBadge.textContent = `CENTINELA ACTIVO (${data.targetMeal || 'ALMUERZO'})`;
       }
       if (sysStatus) {
-        sysStatus.textContent = `Vigilando cupos liberados en tiempo real para ${data.count} alumno(s) en cola`;
+        sysStatus.textContent = `Vigilando cupos liberados en tiempo real para ${data.sentinelQueueCount || 0} alumno(s) en cola`;
       }
     } else if (data.status === 'ARMED') {
       if (statusBadge) {
@@ -539,7 +542,7 @@ async function loadSentinelQueue() {
         statusBadge.textContent = `SISTEMA AUTÓNOMO ACTIVO`;
       }
       if (sysStatus) {
-        sysStatus.textContent = `El servidor disparará automáticamente en cuanto haya reservas programadas`;
+        sysStatus.textContent = `El servidor disparará automáticamente en cuanto llegue el horario de apertura`;
       }
     }
   } catch (err) {
@@ -595,7 +598,15 @@ async function loadSniperStatus() {
 
     const queueLive = document.getElementById('autoQueueLiveCount');
     if (queueLive) {
-      queueLive.textContent = `${data.sentinelQueueCount || 0} alumno(s) en cola`;
+      const sentCount = data.sentinelQueueCount || 0;
+      const totalCount = data.totalPendingCount ?? (data.queue?.length || 0);
+      if (sentCount > 0) {
+        queueLive.textContent = `${sentCount} en Centinela`;
+      } else if (totalCount > 0) {
+        queueLive.textContent = `${totalCount} anticipada(s)`;
+      } else {
+        queueLive.textContent = `0 alumnos`;
+      }
     }
   } catch (err) {
     console.error('Error cargando estado:', err);
@@ -1057,7 +1068,10 @@ function setupSSE() {
       const term = document.getElementById('adminLogTerminal');
       if (term) {
         const line = document.createElement('div');
-        const colorClass = data.type === 'success' ? 'text-success' : data.type === 'error' ? 'text-danger' : data.type === 'warning' ? 'text-warning' : 'text-muted';
+        const colorClass = data.type === 'success' ? 'text-success' : 
+                           data.type === 'error' ? 'text-danger' : 
+                           data.type === 'warning' ? 'text-warning' : 
+                           data.type === 'info' ? 'text-info' : 'text-muted';
         line.className = `terminal-line ${colorClass}`;
         line.textContent = `[${data.time || new Date().toLocaleTimeString('es-PE')}] [${(data.type || 'INFO').toUpperCase()}] ${data.message}`;
         term.appendChild(line);
