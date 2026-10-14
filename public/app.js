@@ -1,6 +1,7 @@
 /* --------------------------------------------------------------------------
    COMEDOR UNAB - CLIENT APPLICATION
-   Multi-user, SuperAdmin, Student Portal, Image 2 Replica, Low Memory Profile
+   Multi-User, Autonomous Server-Side Reservations, Minimalist Sober Design
+   Zero Emojis, Clean SVG Icons, 100% Responsive, Zero Toast Spam
    -------------------------------------------------------------------------- */
 
 let currentAuth = null;
@@ -11,17 +12,31 @@ let todayDateStr = '';
 let tomorrowDateStr = '';
 let studentViewDate = ''; // Defaults to tomorrow for advance reservations
 
-// White Minimalist Toast Notifications (Point 3)
+// Minimalist Toast Notifications (Clean SVGs, No Emojis)
 function showToast(message, type = 'info') {
   const shelf = document.getElementById('toastShelf');
   if (!shelf) return;
+
   const toast = document.createElement('div');
   toast.className = `toast-msg ${type}`;
+
+  let iconSvg = '';
+  if (type === 'success') {
+    iconSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--emerald)" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>`;
+  } else if (type === 'error') {
+    iconSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--rose)" stroke-width="2.5"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+  } else if (type === 'warning') {
+    iconSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--amber)" stroke-width="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>`;
+  } else {
+    iconSvg = `<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="var(--navy-primary)" stroke-width="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>`;
+  }
+
   toast.innerHTML = `
-    <span>${type === 'success' ? '✅' : type === 'error' ? '❌' : type === 'warning' ? '⚠️' : 'ℹ️'}</span>
+    <span style="display: flex; align-items: center; flex-shrink: 0;">${iconSvg}</span>
     <span>${message}</span>
   `;
   shelf.appendChild(toast);
+
   setTimeout(() => {
     toast.style.opacity = '0';
     setTimeout(() => toast.remove(), 250);
@@ -48,7 +63,7 @@ function authHeaders() {
   };
 }
 
-// Real-Time Clock (Zero tedious countdowns)
+// Real-Time Lima Clock
 function tickClock() {
   const now = new Date(Date.now() + serverOffset);
   const timeStr = now.toLocaleTimeString('en-GB', { timeZone: 'America/Lima', hour12: false });
@@ -58,7 +73,7 @@ function tickClock() {
   if (clockEl) clockEl.textContent = `${timeStr}${msStr}`;
 }
 
-// Spanish Date Formatter (Matches Image 2: "Jueves, 1 De Octubre")
+// Spanish Date Formatter: "Jueves, 1 De Octubre"
 function formatSpanishDate(isoDateStr) {
   if (!isoDateStr) return '';
   const [y, m, d] = isoDateStr.split('-').map(Number);
@@ -70,7 +85,7 @@ function formatSpanishDate(isoDateStr) {
   return `${dayName}, ${d} De ${monthName}`;
 }
 
-// Synchronize server time
+// Time Synchronization
 async function syncTime() {
   try {
     const t0 = Date.now();
@@ -82,7 +97,6 @@ async function syncTime() {
     todayDateStr = data.today;
     tomorrowDateStr = data.tomorrow;
 
-    // Student view defaults to tomorrow for advance reservations
     if (!studentViewDate) {
       studentViewDate = data.tomorrow;
     }
@@ -92,12 +106,9 @@ async function syncTime() {
     if (lblTom) lblTom.textContent = data.tomorrow;
     if (lblTod) lblTod.textContent = data.today;
 
-    const adminDate = document.getElementById('adminSniperDateInput');
-    if (adminDate && !adminDate.value) adminDate.value = data.tomorrow;
-
     updateStudentHeaderDate();
   } catch (err) {
-    console.error('Error syncing time:', err);
+    console.error('Error sincronizando hora:', err);
   }
 }
 
@@ -152,8 +163,8 @@ function showAppView(user) {
     document.getElementById('ramPill').style.display = 'inline-flex';
     initAdminPanel();
   } else {
-    roleBadge.textContent = 'Alumno · Sede La Florida';
-    roleBadge.className = 'status-pill';
+    roleBadge.textContent = 'Estudiante · Sede La Florida';
+    roleBadge.className = 'status-pill role';
     document.getElementById('panel-superadmin').style.display = 'none';
     document.getElementById('panel-student').style.display = 'block';
     document.getElementById('ramPill').style.display = 'none';
@@ -161,14 +172,14 @@ function showAppView(user) {
   }
 }
 
-// Login Submit
-document.getElementById('loginForm').addEventListener('submit', async (e) => {
+// Login Submit (Transparent Auto-Registration)
+document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
   e.preventDefault();
   const username = document.getElementById('loginUsername').value.trim();
   const password = document.getElementById('loginPassword').value.trim();
 
   try {
-    showToast('Iniciando sesión...', 'info');
+    showToast('Validando credenciales con UNAB...', 'info');
     const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -182,7 +193,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
       showToast(`Bienvenido, ${data.user.name || data.user.username}`, 'success');
       showAppView(data.user);
     } else {
-      showToast(data.error || 'Credenciales inválidas', 'error');
+      showToast(data.error || 'Credenciales no válidas', 'error');
     }
   } catch (err) {
     showToast(`Error de conexión: ${err.message}`, 'error');
@@ -190,7 +201,7 @@ document.getElementById('loginForm').addEventListener('submit', async (e) => {
 });
 
 // Logout
-document.getElementById('btnLogout').addEventListener('click', async () => {
+document.getElementById('btnLogout')?.addEventListener('click', async () => {
   try {
     await fetch('/api/auth/logout', { method: 'POST', headers: authHeaders() });
   } catch {}
@@ -200,7 +211,7 @@ document.getElementById('btnLogout').addEventListener('click', async () => {
 });
 
 // --------------------------------------------------------------------------
-// SUPERADMIN FUNCTIONS
+// SUPERADMIN PANEL CONTROLLER
 // --------------------------------------------------------------------------
 function initAdminPanel() {
   loadAdminUsers();
@@ -213,6 +224,7 @@ function initAdminPanel() {
   setInterval(loadSniperStatus, 4000);
 }
 
+// Load Students
 async function loadAdminUsers() {
   try {
     const res = await fetch('/api/admin/users', { headers: authHeaders() });
@@ -222,35 +234,33 @@ async function loadAdminUsers() {
       renderAdminUsersTable(data.users);
     }
   } catch (err) {
-    console.error('Error loading users:', err);
+    console.error('Error cargando usuarios:', err);
   }
 }
 
-// Render Admin Users Table with Unified Single-Column Reservation & Appointment Controls
 function renderAdminUsersTable(users) {
   const tbody = document.getElementById('adminUsersTableBody');
+  if (!tbody) return;
   tbody.innerHTML = '';
 
   users.forEach(u => {
     const tr = document.createElement('tr');
 
-    // Consolidated single-column reservation management with direct Activar/Desactivar buttons
-    let mananaHtml = '<div style="margin-bottom: 0.35rem;"><strong style="font-size: 0.78rem; color: var(--navy-primary);">Mañana:</strong> ';
+    let mananaHtml = '<div style="margin-bottom: 0.25rem;"><strong style="font-size: 0.76rem; color: var(--navy-primary);">Mañana:</strong> ';
     if (u.reservasManana && u.reservasManana.length > 0) {
       const pills = u.reservasManana.map(r => {
-        const isActiva = r.status === 'ACTIVA';
         const isConfirmada = r.status === 'CONFIRMADA';
-        const badgeClass = isConfirmada ? 'badge-success' : isActiva ? 'badge-success' : 'badge-warning';
+        const isActiva = r.status === 'ACTIVA';
+        const badgeClass = isConfirmada ? 'badge-success' : isActiva ? 'badge-warning' : 'badge-neutral';
 
         return `
           <div style="display: inline-flex; align-items: center; gap: 0.25rem; margin: 2px 4px 2px 0;">
             <span class="badge ${badgeClass}">${r.meal} (${r.status})</span>
             ${!isConfirmada ? `
-              <button class="btn ${isActiva ? 'btn-secondary' : 'btn-primary'} btn-sm" 
-                style="padding: 2px 6px; font-size: 0.72rem; line-height: 1;" 
-                onclick="adminToggleReserva('${r.id}')" 
-                title="${isActiva ? 'Desactivar esta cita' : 'Activar esta cita'}">
-                ${isActiva ? 'Desactivar' : 'Activar'}
+              <button class="btn btn-secondary btn-sm" 
+                style="padding: 1px 6px; font-size: 0.7rem; line-height: 1;" 
+                onclick="adminToggleReserva('${r.id}')">
+                ${isActiva ? 'Pausar' : 'Activar'}
               </button>
             ` : ''}
           </div>
@@ -258,21 +268,21 @@ function renderAdminUsersTable(users) {
       }).join(' ');
       mananaHtml += pills + '</div>';
     } else {
-      mananaHtml += '<span style="color: var(--slate-500); font-size: 0.78rem;">Sin citas registradas</span></div>';
+      mananaHtml += '<span style="color: var(--slate-500); font-size: 0.76rem;">Sin reservas</span></div>';
     }
 
-    let hoyHtml = '<div><strong style="font-size: 0.78rem; color: var(--slate-600);">Hoy:</strong> ';
+    let hoyHtml = '<div><strong style="font-size: 0.76rem; color: var(--slate-600);">Hoy:</strong> ';
     if (u.reservasHoy && u.reservasHoy.length > 0) {
       const pills = u.reservasHoy.map(r => `
         <span class="badge badge-neutral" style="margin-right: 4px;">${r.meal} (${r.status})</span>
       `).join(' ');
       hoyHtml += pills + '</div>';
     } else {
-      hoyHtml += '<span style="color: var(--slate-500); font-size: 0.78rem;">Sin tickets hoy</span></div>';
+      hoyHtml += '<span style="color: var(--slate-500); font-size: 0.76rem;">Sin tickets</span></div>';
     }
 
     const combinedHistory = `
-      <div style="display: flex; flex-direction: column; gap: 0.2rem; min-width: 260px;">
+      <div style="display: flex; flex-direction: column; gap: 0.15rem; min-width: 250px;">
         ${mananaHtml}
         ${hoyHtml}
       </div>
@@ -281,7 +291,7 @@ function renderAdminUsersTable(users) {
     tr.innerHTML = `
       <td>
         <strong>${u.name || u.username}</strong>
-        <div style="font-size: 0.75rem; color: var(--slate-500); font-family: var(--font-mono);">${u.username}</div>
+        <div style="font-size: 0.74rem; color: var(--slate-500); font-family: var(--font-mono);">${u.username}</div>
       </td>
       <td>${u.dni || '-'}</td>
       <td>${(u.campus || 'LA_FLORIDA').replace('_', ' ')}</td>
@@ -289,20 +299,19 @@ function renderAdminUsersTable(users) {
       <td>
         <label style="display: flex; align-items: center; gap: 0.35rem; cursor: pointer; font-size: 0.8rem;">
           <input type="checkbox" ${u.autoSniper ? 'checked' : ''} onchange="toggleUserSniper('${u.id}', this.checked)">
-          <span>${u.autoSniper ? 'Activo' : 'Pausado'}</span>
+          <span>${u.autoSniper ? 'Activo' : 'Inactivo'}</span>
         </label>
       </td>
       <td>
         ${u.role !== 'superadmin' ? `
           <button class="btn btn-danger btn-sm" onclick="deleteUserPrompt('${u.id}', '${u.username}')">Eliminar</button>
-        ` : '<span style="color: #94a3b8; font-size: 0.75rem; font-weight: 600;">SuperAdmin</span>'}
+        ` : '<span class="badge badge-neutral">SuperAdmin</span>'}
       </td>
     `;
     tbody.appendChild(tr);
   });
 }
 
-// Admin toggle of student advance reservation or appointment
 async function adminToggleReserva(reservaId) {
   try {
     const res = await fetch(`/api/admin/reservas/${reservaId}/toggle`, {
@@ -311,11 +320,11 @@ async function adminToggleReserva(reservaId) {
     });
     const data = await res.json();
     if (res.ok && data.success) {
-      showToast(`Cita modificada a: ${data.item.status || data.item.estado}`, 'success');
+      showToast(`Estado actualizado: ${data.item.status || data.item.estado}`, 'success');
       loadAdminUsers();
       loadAdminReservas();
     } else {
-      showToast(data.error || 'No se pudo cambiar el estado de la cita', 'error');
+      showToast(data.error || 'No se pudo actualizar', 'error');
     }
   } catch (err) {
     showToast(err.message, 'error');
@@ -329,7 +338,7 @@ async function toggleUserSniper(userId, state) {
       headers: authHeaders(),
       body: JSON.stringify({ autoSniper: state })
     });
-    showToast('Auto-reserva del alumno actualizada', 'success');
+    showToast('Auto-reserva actualizada', 'success');
   } catch {}
 }
 
@@ -341,13 +350,13 @@ async function deleteUserPrompt(userId, username) {
       headers: authHeaders()
     });
     if (res.ok) {
-      showToast('Alumno eliminado correctamente', 'success');
+      showToast('Alumno eliminado', 'success');
       loadAdminUsers();
     }
   } catch {}
 }
 
-// Add user modal
+// Add user modal listener
 document.getElementById('btnOpenAddUserModal')?.addEventListener('click', () => {
   openModal('modalAddUser');
 });
@@ -373,7 +382,7 @@ document.getElementById('formAddUser')?.addEventListener('submit', async (e) => 
     });
     const data = await res.json();
     if (res.ok && data.success) {
-      showToast(`Alumno ${userData.name} registrado con éxito.`, 'success');
+      showToast(`Alumno ${userData.name} registrado.`, 'success');
       closeModal('modalAddUser');
       document.getElementById('formAddUser').reset();
       loadAdminUsers();
@@ -391,6 +400,7 @@ async function loadAdminReservas() {
     const res = await fetch('/api/admin/reservas', { headers: authHeaders() });
     const data = await res.json();
     const tbody = document.getElementById('adminReservasTableBody');
+    if (!tbody) return;
     tbody.innerHTML = '';
 
     const list = [...(data.advance || []), ...(data.reservas || [])];
@@ -411,7 +421,7 @@ async function loadAdminReservas() {
         <td><span class="badge badge-neutral">${r.tipoComida}</span></td>
         <td>${(r.campus || 'LA_FLORIDA').replace('_', ' ')}</td>
         <td><span class="badge ${isActiva ? 'badge-success' : 'badge-danger'}">${r.status || r.estado}</span></td>
-        <td><code style="font-size: 0.75rem;">${r.id ? r.id.slice(0, 14) + '...' : '-'}</code></td>
+        <td><code style="font-size: 0.74rem;">${r.id ? r.id.slice(0, 14) + '...' : '-'}</code></td>
       `;
       tbody.appendChild(tr);
     });
@@ -420,15 +430,18 @@ async function loadAdminReservas() {
 
 document.getElementById('btnRefreshAdminReservas')?.addEventListener('click', loadAdminReservas);
 
-// Admin Metrics (RAM & Railway)
+// Admin Metrics (RAM)
 async function loadAdminMetrics() {
   try {
     const res = await fetch('/api/admin/metrics', { headers: authHeaders() });
     const data = await res.json();
     if (res.ok && data.memory) {
-      document.getElementById('metricRss').textContent = `${data.memory.rssMb} MB`;
-      document.getElementById('metricHeap').textContent = `${data.memory.heapUsedMb} MB`;
-      document.getElementById('ramUsageVal').textContent = data.memory.rssMb;
+      const rssEl = document.getElementById('metricRss');
+      const heapEl = document.getElementById('metricHeap');
+      const ramVal = document.getElementById('ramUsageVal');
+      if (rssEl) rssEl.textContent = `${data.memory.rssMb} MB`;
+      if (heapEl) heapEl.textContent = `${data.memory.heapUsedMb} MB`;
+      if (ramVal) ramVal.textContent = data.memory.rssMb;
     }
   } catch {}
 }
@@ -444,9 +457,9 @@ document.getElementById('fileRestoreInput')?.addEventListener('change', async (e
   try {
     const text = await file.text();
     const json = JSON.parse(text);
-    if (!confirm('¿Restaurar la base de datos con este archivo JSON? Se actualizarán los usuarios y reservas.')) return;
+    if (!confirm('¿Restaurar la base de datos con este archivo JSON?')) return;
     
-    showToast('Restaurando datos...', 'info');
+    showToast('Restaurando base de datos...', 'info');
     const res = await fetch('/api/admin/restore', {
       method: 'POST',
       headers: authHeaders(),
@@ -454,147 +467,21 @@ document.getElementById('fileRestoreInput')?.addEventListener('change', async (e
     });
     const data = await res.json();
     if (res.ok && data.success) {
-      showToast('¡Base de datos restaurada correctamente!', 'success');
+      showToast('Base de datos restaurada correctamente', 'success');
       loadAdminUsers();
       loadAdminReservas();
     } else {
       showToast(data.error || 'Error al restaurar', 'error');
     }
   } catch (err) {
-    showToast('Archivo de respaldo no válido', 'error');
+    showToast('Archivo no válido', 'error');
   }
   e.target.value = '';
 });
 
-// Official Opening Times Mapping
-const OFFICIAL_MEAL_TIMES = {
-  DESAYUNO: '06:30:00',
-  ALMUERZO: '11:00:00',
-  CENA: '17:00:00',
-  INTELIGENTE: '11:00:00',
-  TODAS: '06:30:00'
-};
-
-// Update button and time input when meal select changes
-const sniperMealSelect = document.getElementById('adminSniperMealSelect');
-const sniperTimeInput = document.getElementById('adminSniperTimeInput');
-const btnAdminArmSniper = document.getElementById('btnAdminArmSniper');
-
-sniperMealSelect?.addEventListener('change', () => {
-  const meal = sniperMealSelect.value;
-  const defaultTime = OFFICIAL_MEAL_TIMES[meal] || '11:00:00';
-  if (sniperTimeInput) sniperTimeInput.value = defaultTime;
-
-  if (btnAdminArmSniper) {
-    if (meal === 'DESAYUNO') {
-      btnAdminArmSniper.textContent = '🚀 Armar Francotirador a las 06:30';
-    } else if (meal === 'ALMUERZO') {
-      btnAdminArmSniper.textContent = '🚀 Armar Francotirador a las 11:00';
-    } else if (meal === 'CENA') {
-      btnAdminArmSniper.textContent = '🚀 Armar Francotirador a las 17:00';
-    } else {
-      btnAdminArmSniper.textContent = '🚀 Armar Centinela Multi-Horario';
-    }
-  }
-});
-
-// Intelligent Multi-Meal Sniper Controls
-btnAdminArmSniper?.addEventListener('click', async () => {
-  const meal = sniperMealSelect?.value || 'ALMUERZO';
-  const date = document.getElementById('adminSniperDateInput')?.value || tomorrowDateStr;
-  const targetTime = sniperTimeInput?.value || OFFICIAL_MEAL_TIMES[meal] || '11:00:00';
-
-  try {
-    const res = await fetch('/api/sniper/start', {
-      method: 'POST',
-      headers: authHeaders(),
-      body: JSON.stringify({ targetTime, targetMeal: meal, targetDate: date })
-    });
-    const data = await res.json();
-    if (res.ok && data.success) {
-      showToast(`Francotirador armado para ${meal} del ${date} a las ${targetTime}`, 'success');
-      const badge = document.getElementById('adminSniperStatusBadge');
-      if (badge) {
-        badge.className = 'badge badge-success';
-        badge.textContent = `ARMADO PARA ${meal} (${targetTime.slice(0, 5)})`;
-      }
-    } else {
-      showToast(data.error || 'No se pudo armar el francotirador', 'error');
-    }
-  } catch (err) {
-    showToast(`Error: ${err.message}`, 'error');
-  }
-});
-
-// Sentinel Button: Continuous Watchdog for Liberated Cupos
-document.getElementById('btnAdminStartSentinel')?.addEventListener('click', async () => {
-  const meal = sniperMealSelect?.value || 'ALMUERZO';
-  const date = document.getElementById('adminSniperDateInput')?.value || todayDateStr;
-
-  try {
-    showToast(`Activando Centinela continuo para ${meal}...`, 'info');
-    const res = await fetch('/api/sniper/sentinel/start', {
-      method: 'POST',
-      headers: authHeaders(),
-      body: JSON.stringify({ targetMeal: meal, targetDate: date })
-    });
-    const data = await res.json();
-    if (res.ok && data.success) {
-      showToast(`🛡️ Centinela activo para ${meal}. Capturando cancelaciones y cupos liberados.`, 'success');
-      const badge = document.getElementById('adminSniperStatusBadge');
-      if (badge) {
-        badge.className = 'badge badge-warning';
-        badge.textContent = `🛡️ CENTINELA ACTIVO (${meal})`;
-      }
-      const sysStatus = document.getElementById('adminSniperSystemStatus');
-      if (sysStatus) {
-        sysStatus.textContent = `Centinela vigilando ${meal} en tiempo real`;
-      }
-    }
-  } catch (err) {
-    showToast(`Error al iniciar centinela: ${err.message}`, 'error');
-  }
-});
-
-// Stop button: halts both sniper and sentinel
-document.getElementById('btnAdminStopAll')?.addEventListener('click', async () => {
-  try {
-    const res = await fetch('/api/sniper/stop', {
-      method: 'POST',
-      headers: authHeaders()
-    });
-    const data = await res.json();
-    if (res.ok) {
-      showToast('Francotirador y centinela detenidos.', 'info');
-      loadSniperStatus();
-      loadSentinelQueue();
-    }
-  } catch (err) {
-    showToast(`Error al detener: ${err.message}`, 'error');
-  }
-});
-
-document.getElementById('btnAdminForceFire')?.addEventListener('click', async () => {
-  const meal = sniperMealSelect?.value || 'ALMUERZO';
-  const date = document.getElementById('adminSniperDateInput')?.value || todayDateStr;
-  if (!confirm(`¿Disparar captura inmediata para ${meal} del ${date}?`)) return;
-
-  try {
-    showToast(`Ejecutando disparo para ${meal}...`, 'info');
-    const res = await fetch('/api/admin/sniper/mass-fire', {
-      method: 'POST',
-      headers: authHeaders(),
-      body: JSON.stringify({ targetMeal: meal, targetDate: date })
-    });
-    if (res.ok) {
-      showToast('Disparo ejecutado con éxito.', 'success');
-    }
-  } catch (err) {
-    showToast('Error en disparo', 'error');
-  }
-});
-
-// Live Sentinel Queue Controller (SuperAdmin)
+// --------------------------------------------------------------------------
+// FRANCOTIRADOR MASIVO & COLA CENTINELA (ADMIN)
+// --------------------------------------------------------------------------
 async function loadSentinelQueue() {
   try {
     const res = await fetch('/api/sniper/queue', { headers: authHeaders() });
@@ -609,20 +496,20 @@ async function loadSentinelQueue() {
     tbody.innerHTML = '';
 
     if (!data.queue || data.queue.length === 0) {
-      tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--slate-500); padding: 1.5rem;">No hay alumnos en cola de espera en este momento.</td></tr>`;
+      tbody.innerHTML = `<tr><td colspan="7" style="text-align: center; color: var(--slate-500); padding: 1.5rem;">No hay alumnos en cola activa en este momento.</td></tr>`;
     } else {
       data.queue.forEach(item => {
         const tr = document.createElement('tr');
         const timeStr = item.createdAt ? new Date(item.createdAt).toLocaleTimeString('es-PE', { timeZone: 'America/Lima' }) : '--:--';
         tr.innerHTML = `
-          <td><strong>${item.studentName}</strong><div style="font-size: 0.75rem; color: var(--slate-500); font-family: var(--font-mono);">${item.studentUsername}</div></td>
+          <td><strong>${item.studentName}</strong><div style="font-size: 0.74rem; color: var(--slate-500); font-family: var(--font-mono);">${item.studentUsername}</div></td>
           <td>${item.studentDni || '-'}</td>
           <td><span class="badge badge-neutral">${item.meal}</span></td>
           <td>${item.date}</td>
           <td>${timeStr}</td>
-          <td><span class="badge badge-warning">🛡️ En Cola (Esperando Cupo)</span></td>
+          <td><span class="badge badge-warning">En Cola de Cupos</span></td>
           <td>
-            <button class="btn btn-danger btn-sm" style="padding: 2px 8px; font-size: 0.72rem;" onclick="adminCancelAdvance('${item.advanceId}')">
+            <button class="btn btn-danger btn-sm" onclick="adminCancelAdvance('${item.advanceId}')">
               Cancelar
             </button>
           </td>
@@ -631,68 +518,66 @@ async function loadSentinelQueue() {
       });
     }
 
-    // Sync status indicators
     const statusBadge = document.getElementById('adminSniperStatusBadge');
     const sysStatus = document.getElementById('adminSniperSystemStatus');
     if (data.sentinelActive) {
       if (statusBadge) {
         statusBadge.className = 'badge badge-warning';
-        statusBadge.textContent = `🛡️ CENTINELA ACTIVO (${data.targetMeal || 'ALMUERZO'})`;
+        statusBadge.textContent = `CENTINELA ACTIVO (${data.targetMeal || 'ALMUERZO'})`;
       }
       if (sysStatus) {
-        sysStatus.style.color = '#d97706';
-        sysStatus.textContent = `Vigilando cupos liberados cada 1.5s para ${data.count} alumno(s) en cola`;
+        sysStatus.textContent = `Vigilando cupos liberados en tiempo real para ${data.count} alumno(s) en cola`;
       }
     } else if (data.status === 'ARMED') {
-      // Keep armed status
-    } else {
       if (statusBadge) {
         statusBadge.className = 'badge badge-success';
-        statusBadge.textContent = `PROGRAMACIÓN INTELIGENTE ACTIVA`;
+        statusBadge.textContent = `PROGRAMADO PARA ${data.targetMeal || 'CENA'}`;
+      }
+    } else {
+      if (statusBadge) {
+        statusBadge.className = 'badge badge-neutral';
+        statusBadge.textContent = `SISTEMA AUTÓNOMO ACTIVO`;
       }
       if (sysStatus) {
-        sysStatus.style.color = 'var(--emerald)';
-        sysStatus.textContent = `Listo (se activará automáticamente cuando un alumno entre en cola)`;
+        sysStatus.textContent = `El servidor disparará automáticamente en cuanto haya reservas programadas`;
       }
     }
   } catch (err) {
-    console.error('Error loading sentinel queue:', err);
+    console.error('Error cargando cola:', err);
   }
 }
 
-// Live Sniper & Railway Autopilot Telemetry (SuperAdmin)
 async function loadSniperStatus() {
   try {
     const res = await fetch('/api/sniper/status', { headers: authHeaders() });
     const data = await res.json();
     if (!res.ok) return;
 
-    // Railway Telemetry elements
     const nextBadge = document.getElementById('railwayNextOpeningBadge');
     if (nextBadge && data.nextOpening) {
-      nextBadge.textContent = `Próxima: ${data.nextOpening.meal} (${data.nextOpening.time})`;
+      nextBadge.textContent = `${data.nextOpening.meal} (${data.nextOpening.time})`;
     }
 
     const nextCount = document.getElementById('railwayNextAdvanceCount');
     if (nextCount && data.nextOpening) {
       const cnt = data.nextOpening.advanceCount || 0;
-      nextCount.textContent = `${cnt} cita(s) registrada(s)`;
-      nextCount.className = cnt > 0 ? 'badge badge-success' : 'badge badge-warning';
+      nextCount.textContent = cnt > 0 ? `${cnt} reserva(s) en cola` : '0 reservas en cola';
+      nextCount.className = cnt > 0 ? 'badge badge-success' : 'badge badge-neutral';
     }
 
     const sniperLive = document.getElementById('autoSniperLiveStatus');
     if (sniperLive) {
       if (data.status === 'ARMED') {
-        sniperLive.textContent = `🎯 ARMADO (${(data.targetTime || '11:00').slice(0, 5)})`;
+        sniperLive.textContent = `Armado (${(data.targetTime || '17:00').slice(0, 5)})`;
         sniperLive.style.color = 'var(--emerald)';
       } else if (data.status === 'RESERVING') {
-        sniperLive.textContent = `🚀 DISPARANDO RÁFAGA...`;
-        sniperLive.style.color = '#dc2626';
+        sniperLive.textContent = `Disparando ráfaga...`;
+        sniperLive.style.color = 'var(--rose)';
       } else if (data.nextOpening?.advanceCount > 0) {
-        sniperLive.textContent = `Listo (Armado en T-5m)`;
+        sniperLive.textContent = `Programado (${data.nextOpening.meal} ${data.nextOpening.time})`;
         sniperLive.style.color = 'var(--navy-primary)';
       } else {
-        sniperLive.textContent = `💤 En Reposo (0 citas)`;
+        sniperLive.textContent = `En Reposo (0 reservas)`;
         sniperLive.style.color = 'var(--slate-500)';
       }
     }
@@ -700,20 +585,20 @@ async function loadSniperStatus() {
     const sentinelLive = document.getElementById('autoSentinelLiveStatus');
     if (sentinelLive) {
       if (data.sentinelActive) {
-        sentinelLive.textContent = `🛡️ ACTIVO (Vigilando liberados)`;
-        sentinelLive.style.color = '#d97706';
+        sentinelLive.textContent = `Activo (Vigilando liberados)`;
+        sentinelLive.style.color = 'var(--amber)';
       } else {
-        sentinelLive.textContent = `💤 En Reposo (Auto-apagado)`;
+        sentinelLive.textContent = `En Reposo`;
         sentinelLive.style.color = 'var(--slate-500)';
       }
     }
 
     const queueLive = document.getElementById('autoQueueLiveCount');
     if (queueLive) {
-      queueLive.textContent = `${data.sentinelQueueCount || 0} alumno(s) en espera`;
+      queueLive.textContent = `${data.sentinelQueueCount || 0} alumno(s) en cola`;
     }
   } catch (err) {
-    console.error('Error loading sniper status:', err);
+    console.error('Error cargando estado:', err);
   }
 }
 
@@ -728,25 +613,50 @@ async function adminCancelAdvance(advId) {
       showToast('Alumno retirado de la cola.', 'info');
       loadSentinelQueue();
       loadAdminUsers();
+      loadSniperStatus();
     }
   } catch (err) {
     showToast(err.message, 'error');
   }
 }
 
-document.getElementById('btnRefreshSentinelQueue')?.addEventListener('click', loadSentinelQueue);
+document.getElementById('btnRefreshSentinelQueue')?.addEventListener('click', () => {
+  loadSentinelQueue();
+  loadSniperStatus();
+});
+
+document.getElementById('btnAdminForceFire')?.addEventListener('click', async () => {
+  if (!confirm('¿Ejecutar disparo inmediato de prueba para los alumnos en cola?')) return;
+  try {
+    showToast('Ejecutando disparo inmediato...', 'info');
+    const res = await fetch('/api/admin/sniper/mass-fire', {
+      method: 'POST',
+      headers: authHeaders(),
+      body: JSON.stringify({})
+    });
+    const data = await res.json();
+    if (res.ok) {
+      showToast('Disparo completado.', 'success');
+      loadSniperStatus();
+      loadSentinelQueue();
+    } else {
+      showToast(data.error || 'Error al ejecutar disparo', 'error');
+    }
+  } catch (err) {
+    showToast('Error en disparo', 'error');
+  }
+});
 
 // --------------------------------------------------------------------------
-// STUDENT FUNCTIONS (EXACT REPLICA OF IMAGEN 2)
+// STUDENT PORTAL (REPLICA EXACTA IMAGEN 2)
 // --------------------------------------------------------------------------
 function initStudentPanel(user) {
-  // Populate Ficha
   const fNom = document.getElementById('fichaNombre');
   if (fNom) fNom.textContent = user.name || user.username;
   const fCod = document.getElementById('fichaCodigo');
   if (fCod) fCod.textContent = user.username;
   const fDni = document.getElementById('fichaDni');
-  if (fDni) fDni.textContent = user.dni || '76448557';
+  if (fDni) fDni.textContent = user.dni || '-';
   const fSed = document.getElementById('fichaSede');
   if (fSed) fSed.textContent = (user.campus || 'LA_FLORIDA').replace('_', ' ');
 
@@ -760,15 +670,16 @@ async function loadStudentAttendance() {
     const res = await fetch('/api/comedor/estado', { headers: authHeaders() });
     const data = await res.json();
     if (res.ok && data.data) {
-      document.getElementById('studentInasistencias').textContent = data.data.inasistencias ?? 0;
+      const el = document.getElementById('studentInasistencias');
+      if (el) el.textContent = data.data.inasistencias ?? 0;
     }
   } catch {}
 }
 
-// Date Switcher Listeners (Mañana vs Hoy)
+// Date Switcher Listeners
 document.getElementById('btnViewTomorrow')?.addEventListener('click', () => {
   studentViewDate = tomorrowDateStr;
-  document.getElementById('btnViewTomorrow').className = 'btn btn-primary btn-sm active';
+  document.getElementById('btnViewTomorrow').className = 'btn btn-secondary btn-sm active';
   document.getElementById('btnViewToday').className = 'btn btn-secondary btn-sm';
   updateStudentHeaderDate();
   loadStudentMealCards(studentViewDate);
@@ -776,13 +687,13 @@ document.getElementById('btnViewTomorrow')?.addEventListener('click', () => {
 
 document.getElementById('btnViewToday')?.addEventListener('click', () => {
   studentViewDate = todayDateStr;
-  document.getElementById('btnViewToday').className = 'btn btn-primary btn-sm active';
+  document.getElementById('btnViewToday').className = 'btn btn-secondary btn-sm active';
   document.getElementById('btnViewTomorrow').className = 'btn btn-secondary btn-sm';
   updateStudentHeaderDate();
   loadStudentMealCards(studentViewDate);
 });
 
-// Renders the 3 Meal Cards matching Image 2 perfectly
+// Render 3 Meal Cards
 async function loadStudentMealCards(targetDate) {
   const container = document.getElementById('studentMealCardsContainer');
   if (!container) return;
@@ -790,17 +701,14 @@ async function loadStudentMealCards(targetDate) {
   container.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; color: var(--slate-500); padding: 2rem;">Consultando disponibilidad para el ${targetDate}...</div>`;
 
   try {
-    // 1. Fetch official UNAB programming for targetDate
     const progPromise = fetch(`/api/comedor/programacion?date=${targetDate}`, { headers: authHeaders() })
       .then(r => r.json())
       .catch(() => ({ data: [] }));
 
-    // 2. Fetch student's confirmed tickets for targetDate
     const ticketPromise = fetch(`/api/comedor/reservas?fecha=${targetDate}`, { headers: authHeaders() })
       .then(r => r.json())
       .catch(() => ({ data: [] }));
 
-    // 3. Fetch student's advance reservations for targetDate
     const advancePromise = fetch(`/api/student/advance-reservations?fecha=${targetDate}`, { headers: authHeaders() })
       .then(r => r.json())
       .catch(() => ({ data: [] }));
@@ -813,7 +721,6 @@ async function loadStudentMealCards(targetDate) {
 
     container.innerHTML = '';
 
-    // Standard 3 Meals definition (Sincronizado con API oficial UNAB)
     const mealsConfig = [
       {
         key: 'DESAYUNO',
@@ -851,19 +758,16 @@ async function loadStudentMealCards(targetDate) {
       const confirmedTicket = confirmedTickets.find(t => (t.tipoComida || '').toUpperCase() === meal.key);
       const advanceAppt = advanceAppointments.find(a => (a.tipoComida || '').toUpperCase() === meal.key);
 
-      // Quotas calculation
       const disponibles = pItem ? (pItem.disponibleLibre !== undefined ? pItem.disponibleLibre : (pItem.cupoLibre ?? 0)) : 0;
       const total = pItem ? (pItem.cupoLibre || meal.defaultTotal) : meal.defaultTotal;
       const despachados = total - disponibles;
       const progressPercent = Math.min(100, Math.round((despachados / total) * 100));
 
-      // Timing rule check: if targetDate is TODAY and schedule passed
       const isPastCutoff = isToday && (currentH > meal.cutoffHour || (currentH === meal.cutoffHour && currentM >= meal.cutoffMin));
 
       const card = document.createElement('div');
       card.className = 'unab-card';
 
-      // Determine Button Status
       let buttonHtml = '';
       if (confirmedTicket) {
         buttonHtml = `
@@ -874,20 +778,20 @@ async function loadStudentMealCards(targetDate) {
       } else if (advanceAppt) {
         if (isToday) {
           buttonHtml = `
-            <button class="btn-unab-primary" style="background: #d97706 !important; border-color: #b45309 !important; box-shadow: 0 0 10px rgba(217,119,6,0.35);" onclick="cancelAdvancePrompt('${advanceAppt.id}', '${meal.name}')" title="El centinela está buscando activamente un cupo liberado">
-              🛡️ En Cola Centinela (Buscando cupo...)
+            <button class="btn-unab-reserved" onclick="cancelAdvancePrompt('${advanceAppt.id}', '${meal.name}')">
+              En cola de espera (Buscando cupo)
             </button>
             <div style="text-align: center; margin-top: 6px;">
-              <small style="color: var(--slate-500); cursor: pointer; text-decoration: underline;" onclick="cancelAdvancePrompt('${advanceAppt.id}', '${meal.name}')">✕ Cancelar cola</small>
+              <small style="color: var(--slate-500); cursor: pointer; text-decoration: underline;" onclick="cancelAdvancePrompt('${advanceAppt.id}', '${meal.name}')">Cancelar cola</small>
             </div>
           `;
         } else {
           buttonHtml = `
-            <button class="btn-unab-primary" style="background: #059669 !important;" onclick="cancelAdvancePrompt('${advanceAppt.id}', '${meal.name}')">
-              ✓ Cita Anticipada (Activa)
+            <button class="btn-unab-reserved" onclick="cancelAdvancePrompt('${advanceAppt.id}', '${meal.name}')">
+              Reserva anticipada activa
             </button>
             <div style="text-align: center; margin-top: 6px;">
-              <small style="color: var(--slate-500); cursor: pointer; text-decoration: underline;" onclick="cancelAdvancePrompt('${advanceAppt.id}', '${meal.name}')">✕ Cancelar cita</small>
+              <small style="color: var(--slate-500); cursor: pointer; text-decoration: underline;" onclick="cancelAdvancePrompt('${advanceAppt.id}', '${meal.name}')">Cancelar reserva</small>
             </div>
           `;
         }
@@ -904,11 +808,10 @@ async function loadStudentMealCards(targetDate) {
           </button>
         `;
       } else {
-        // Cupos = 0
         if (isToday) {
           buttonHtml = `
-            <button class="btn-unab-primary" style="background: var(--navy-primary) !important;" onclick="reserveAdvanceMeal('${meal.key}')" title="Ponerse en cola y activar el centinela reactivo">
-              🛡️ Ponerse en Cola (Activar Centinela)
+            <button class="btn-unab-primary" onclick="reserveAdvanceMeal('${meal.key}')" title="Ponerse en cola y activar centinela">
+              Ponerse en cola (Cupos agotados)
             </button>
           `;
         } else {
@@ -922,7 +825,6 @@ async function loadStudentMealCards(targetDate) {
 
       card.innerHTML = `
         <div>
-          <!-- Top Row: Name + Gold LIBRE Badge -->
           <div class="unab-card-header">
             <h3 class="unab-card-title">${meal.name}</h3>
             <div style="display: flex; gap: 4px; align-items: center;">
@@ -931,16 +833,13 @@ async function loadStudentMealCards(targetDate) {
             </div>
           </div>
 
-          <!-- Schedule & Campus -->
           <div class="unab-time-row">${meal.schedule}</div>
           <div class="unab-campus-row">La Florida</div>
 
-          <!-- Notice Pill from Image 2 -->
           <div class="unab-pill-notice">
             Esta comida usa cupo <strong>LIBRE</strong>.
           </div>
 
-          <!-- Quotas: Disponibles & Despachados Progress Bar -->
           <div class="unab-quota-section">
             <div class="unab-disponibles-row">
               <span class="unab-disponibles-num">${disponibles}</span>
@@ -958,7 +857,6 @@ async function loadStudentMealCards(targetDate) {
           </div>
         </div>
 
-        <!-- Action Button (Matching Image 2 styles) -->
         <div style="margin-top: 1rem;">
           ${buttonHtml}
         </div>
@@ -972,10 +870,10 @@ async function loadStudentMealCards(targetDate) {
   }
 }
 
-// Student action: Reserve advance meal for tomorrow
+// Student action: Reserve advance meal
 async function reserveAdvanceMeal(meal) {
   try {
-    showToast(`Registrando reserva anticipada de ${meal}...`, 'info');
+    showToast(`Procesando reserva de ${meal}...`, 'info');
     const res = await fetch('/api/student/advance-reservation', {
       method: 'POST',
       headers: authHeaders(),
@@ -987,7 +885,7 @@ async function reserveAdvanceMeal(meal) {
       loadStudentMealCards(studentViewDate);
       loadStudentTickets();
     } else {
-      showToast(data.error || 'No se pudo reservar', 'error');
+      showToast(data.error || 'No se pudo registrar la reserva', 'error');
     }
   } catch (err) {
     showToast(err.message, 'error');
@@ -996,14 +894,14 @@ async function reserveAdvanceMeal(meal) {
 
 // Student action: Cancel advance reservation
 async function cancelAdvancePrompt(advId, mealName) {
-  if (!confirm(`¿Deseas cancelar tu cita anticipada de ${mealName} para el ${studentViewDate}?`)) return;
+  if (!confirm(`¿Deseas anular tu reserva anticipada de ${mealName} para el ${studentViewDate}?`)) return;
   try {
     const res = await fetch(`/api/student/advance-reservation/${advId}`, {
       method: 'DELETE',
       headers: authHeaders()
     });
     if (res.ok) {
-      showToast(`Cita anticipada de ${mealName} cancelada.`, 'info');
+      showToast(`Reserva anticipada de ${mealName} anulada.`, 'info');
       loadStudentMealCards(studentViewDate);
     }
   } catch (err) {
@@ -1011,7 +909,7 @@ async function cancelAdvancePrompt(advId, mealName) {
   }
 }
 
-// Student Tickets & QR Codes
+// Student Tickets & QR
 async function loadStudentTickets() {
   const container = document.getElementById('studentTicketsHolder');
   if (!container) return;
@@ -1024,15 +922,16 @@ async function loadStudentTickets() {
     studentTickets = Array.isArray(data.data) ? data.data : [];
 
     const activeTickets = studentTickets.filter(t => t.estado === 'ACTIVA');
-    document.getElementById('studentTicketsBadge').textContent = activeTickets.length;
+    const badge = document.getElementById('studentTicketsBadge');
+    if (badge) badge.textContent = activeTickets.length;
 
     container.innerHTML = '';
 
     if (studentTickets.length === 0) {
       container.innerHTML = `
         <div class="card" style="text-align: center; padding: 2.5rem;">
-          <p style="color: var(--slate-700); font-weight: 600;">No tienes tickets confirmados para hoy.</p>
-          <p style="color: var(--slate-500); font-size: 0.85rem; margin-top: 0.25rem;">Puedes realizar tu reserva anticipada para mañana desde la pestaña "Reserva tu comida".</p>
+          <p style="color: var(--slate-800); font-weight: 600;">No tienes tickets confirmados para hoy.</p>
+          <p style="color: var(--slate-500); font-size: 0.84rem; margin-top: 0.25rem;">Puedes realizar tu reserva anticipada para mañana desde la pestaña "Reserva tu comida".</p>
         </div>
       `;
       return;
@@ -1055,14 +954,14 @@ async function loadStudentTickets() {
             <span class="badge ${t.estado === 'ACTIVA' ? 'badge-success' : 'badge-danger'}">${t.estado}</span>
           </div>
 
-          <h3 style="font-size: 1.25rem; color: var(--slate-900); font-weight: 700;">Ticket de Comedor</h3>
-          <p style="font-size: 0.85rem; color: var(--slate-500);">Fecha: ${t.fecha} · Hora de Reserva: ${t.horaReserva || '17:00'}</p>
-          <p style="font-size: 0.85rem; color: var(--slate-600); margin-top: 0.25rem;">Alumno: <strong>${t.alumnoNombre || currentAuth.name}</strong></p>
-          <p style="font-size: 0.85rem; color: var(--slate-600);">DNI: <strong>${t.alumnoDni || currentAuth.dni}</strong> · Sede: ${(t.campus || 'LA_FLORIDA').replace('_', ' ')}</p>
+          <h3 style="font-size: 1.2rem; color: var(--slate-900); font-weight: 700;">Ticket de Comedor</h3>
+          <p style="font-size: 0.84rem; color: var(--slate-500);">Fecha: ${t.fecha} · Hora: ${t.horaReserva || '17:00'}</p>
+          <p style="font-size: 0.84rem; color: var(--slate-600); margin-top: 0.2rem;">Alumno: <strong>${t.alumnoNombre || currentAuth.name}</strong></p>
+          <p style="font-size: 0.84rem; color: var(--slate-600);">DNI: <strong>${t.alumnoDni || currentAuth.dni}</strong> · Sede: ${(t.campus || 'LA_FLORIDA').replace('_', ' ')}</p>
 
           <div style="display: flex; gap: 0.5rem; margin-top: 1rem; flex-wrap: wrap;">
             <button class="btn btn-primary btn-sm" onclick="openDigitalPass('${t.id}')">
-              📱 Ver Pase Completo
+              Ver Pase Completo
             </button>
             ${t.estado === 'ACTIVA' ? `
               <button class="btn btn-danger btn-sm" onclick="cancelStudentReservation('${t.id}')">
@@ -1074,7 +973,6 @@ async function loadStudentTickets() {
       `;
       container.appendChild(wrap);
 
-      // Render clean QR
       setTimeout(() => {
         const holder = document.getElementById(qrId);
         if (holder && t.qrToken) {
@@ -1106,7 +1004,7 @@ async function cancelStudentReservation(id) {
       headers: authHeaders()
     });
     if (res.ok) {
-      showToast('Reserva anulada correctamente. Cupo liberado.', 'info');
+      showToast('Reserva anulada. Cupo liberado.', 'info');
       loadStudentTickets();
       loadStudentMealCards(studentViewDate);
     }
@@ -1146,16 +1044,24 @@ function openDigitalPass(id) {
   openModal('modalDigitalPass');
 }
 
-// SSE Events stream
+// --------------------------------------------------------------------------
+// SSE STREAM: SILENT UPDATES & ADMIN LOG TERMINAL (ZERO TOAST SPAM)
+// --------------------------------------------------------------------------
 function setupSSE() {
   const src = new EventSource('/api/events');
+
+  // Logs are routed ONLY to the Admin Terminal, NEVER spammed as toasts to students!
   src.addEventListener('log', (e) => {
     try {
       const data = JSON.parse(e.data);
-      if (data.type === 'success') {
-        showToast(data.message, 'success');
-      } else if (data.type === 'error') {
-        showToast(data.message, 'error');
+      const term = document.getElementById('adminLogTerminal');
+      if (term) {
+        const line = document.createElement('div');
+        const colorClass = data.type === 'success' ? 'text-success' : data.type === 'error' ? 'text-danger' : data.type === 'warning' ? 'text-warning' : 'text-muted';
+        line.className = `terminal-line ${colorClass}`;
+        line.textContent = `[${data.time || new Date().toLocaleTimeString('es-PE')}] [${(data.type || 'INFO').toUpperCase()}] ${data.message}`;
+        term.appendChild(line);
+        term.scrollTop = term.scrollHeight;
       }
     } catch {}
   });
@@ -1189,7 +1095,6 @@ function setupSSE() {
   });
 
   src.addEventListener('reservation-batch-finished', () => {
-    showToast('🎯 Ráfaga de capturas finalizada.', 'success');
     if (currentAuth?.role === 'superadmin') {
       loadAdminReservas();
       loadAdminUsers();
@@ -1220,15 +1125,16 @@ function setupSSE() {
   });
 }
 
-// Navigation Tab switcher
+// Navigation Tabs Switcher
 document.addEventListener('click', (e) => {
-  if (e.target.matches('.tab-link')) {
-    const parent = e.target.closest('.tabs-header');
+  const tabBtn = e.target.closest('.tab-link');
+  if (tabBtn) {
+    const parent = tabBtn.closest('.tabs-header');
     parent.querySelectorAll('.tab-link').forEach(btn => btn.classList.remove('active'));
-    e.target.classList.add('active');
+    tabBtn.classList.add('active');
 
-    const targetId = e.target.getAttribute('data-target');
-    const container = e.target.closest('#panel-superadmin') || e.target.closest('#panel-student');
+    const targetId = tabBtn.getAttribute('data-target');
+    const container = tabBtn.closest('#panel-superadmin') || tabBtn.closest('#panel-student');
     container.querySelectorAll('.tab-pane').forEach(p => p.classList.remove('active'));
     document.getElementById(targetId)?.classList.add('active');
   }

@@ -8,13 +8,24 @@ const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
 
-const DATA_DIR = path.join(__dirname, 'data');
-const DB_FILE = path.join(DATA_DIR, 'database.json');
+let DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
+let DB_FILE = path.join(DATA_DIR, 'database.json');
 
-// Ensure data folder exists
-if (!fs.existsSync(DATA_DIR)) {
-  fs.mkdirSync(DATA_DIR, { recursive: true });
+// Ensure data folder exists and has full permissions
+function ensureDataFolderPermissions() {
+  try {
+    if (!fs.existsSync(DATA_DIR)) {
+      fs.mkdirSync(DATA_DIR, { recursive: true, mode: 0o777 });
+    }
+    try { fs.chmodSync(DATA_DIR, 0o777); } catch (_) {}
+    if (fs.existsSync(DB_FILE)) {
+      try { fs.chmodSync(DB_FILE, 0o666); } catch (_) {}
+    }
+  } catch (e) {
+    // Ignorar si el sistema de archivos montado no permite chmod
+  }
 }
+ensureDataFolderPermissions();
 
 // Credentials configured via environment variables with safe defaults (NEVER exposed to frontend)
 const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'aangelo2555@gmail.com';
@@ -70,6 +81,9 @@ function loadDb() {
   try {
     if (fs.existsSync(DB_FILE)) {
       const content = fs.readFileSync(DB_FILE, 'utf8');
+      cache = JSON.parse(content);
+    } else if (DATA_DIR !== '/tmp' && process.platform !== 'win32' && fs.existsSync('/tmp/database.json')) {
+      const content = fs.readFileSync('/tmp/database.json', 'utf8');
       cache = JSON.parse(content);
     } else {
       cache = JSON.parse(JSON.stringify(DEFAULT_DB));
@@ -139,11 +153,42 @@ function loadDb() {
 function saveDb(data = cache) {
   try {
     cache = data;
-    const tempFile = `${DB_FILE}.tmp.${Date.now()}`;
+    if (!fs.existsSync(DATA_DIR)) {
+      try { fs.mkdirSync(DATA_DIR, { recursive: true, mode: 0o777 }); } catch (_) {}
+    }
+    const randSuffix = Math.random().toString(36).substring(2, 8);
+    const tempFile = path.join(DATA_DIR, `database.json.tmp.${Date.now()}_${randSuffix}`);
     fs.writeFileSync(tempFile, JSON.stringify(data, null, 2), 'utf8');
     fs.renameSync(tempFile, DB_FILE);
   } catch (err) {
     console.error('Error guardando en base de datos:', err);
+
+    // Intentar reparar permisos si fue EACCES
+    if (err.code === 'EACCES') {
+      try { fs.chmodSync(DATA_DIR, 0o777); } catch (_) {}
+      try { if (fs.existsSync(DB_FILE)) fs.chmodSync(DB_FILE, 0o666); } catch (_) {}
+    }
+
+    // Fallback 1: Si el archivo temporal o rename falló, intentar escritura directa
+    try {
+      fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf8');
+      return;
+    } catch (fallbackErr) {
+      console.error('Error en fallback directo de guardado:', fallbackErr.message);
+    }
+
+    // Fallback 2: Si el directorio de datos tiene EACCES permanente en Railway/Linux, usar /tmp
+    if (err.code === 'EACCES' && DATA_DIR !== '/tmp' && process.platform !== 'win32') {
+      try {
+        console.warn(`[DB WARNING] Permisos denegados en ${DATA_DIR}. Cambiando a /tmp para evitar pérdida de datos.`);
+        DATA_DIR = '/tmp';
+        DB_FILE = path.join(DATA_DIR, 'database.json');
+        fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf8');
+        console.log('[DB INFO] Base de datos guardada exitosamente en /tmp/database.json');
+      } catch (tmpErr) {
+        console.error('[DB FATAL] No se pudo guardar ni en data ni en /tmp:', tmpErr.message);
+      }
+    }
   }
 }
 
@@ -236,6 +281,7 @@ function deleteUser(id) {
 
 // Reservations & History
 function recordReservation(reserva) {
+  if (!reserva || !reserva.id) return;
   const db = loadDb();
   const existing = db.reservas.find(r => r.id === reserva.id);
   if (!existing) {
@@ -248,6 +294,30 @@ function recordReservation(reserva) {
     saveDb(db);
   } else {
     Object.assign(existing, reserva);
+    saveDb(db);
+  }
+}
+
+function recordReservations(reservas) {
+  if (!Array.isArray(reservas) || reservas.length === 0) return;
+  const db = loadDb();
+  let changed = false;
+  reservas.forEach(reserva => {
+    if (!reserva || !reserva.id) return;
+    const existing = db.reservas.find(r => r.id === reserva.id);
+    if (!existing) {
+      db.reservas.unshift({
+        ...reserva,
+        recordedAt: new Date().toISOString()
+      });
+      if (db.reservas.length > 250) db.reservas.pop();
+      changed = true;
+    } else {
+      Object.assign(existing, reserva);
+      changed = true;
+    }
+  });
+  if (changed) {
     saveDb(db);
   }
 }
@@ -439,6 +509,7 @@ module.exports = {
   updateUser,
   deleteUser,
   recordReservation,
+  recordReservations,
   updateReservationStatus,
   getAllReservations,
   createAdvanceReservation,

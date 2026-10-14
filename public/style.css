@@ -1,20 +1,23 @@
 /* --------------------------------------------------------------------------
-   COMEDOR UNAB - MINIMALIST CLEAN DESIGN SYSTEM
-   Professional, Executive, Non-Neon, 100% Responsive, White Toast Notifications
+   COMEDOR UNAB - MINIMALIST EXECUTIVE DESIGN SYSTEM
+   Professional, Sober, Zero-Neon, Monochromatic & UNAB Navy Accents
+   100% Responsive, Zero Emojis, Pure SVG Icons & High Contrast Typography
    -------------------------------------------------------------------------- */
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600;700&display=swap');
 
 :root {
-  /* Palette: Clean Corporate Slate & UNAB Navy (Zero Neon) */
+  /* Slate & Navy Minimalist Palette */
   --bg-app: #f8fafc;
   --bg-surface: #ffffff;
   --bg-subtle: #f1f5f9;
+  --bg-subtle-hover: #e2e8f0;
+
   --border-subtle: #e2e8f0;
   --border-strong: #cbd5e1;
 
   --navy-primary: #07406b;
-  --navy-hover: #0a4f84;
+  --navy-hover: #095187;
   --navy-subtle: #eef5fc;
 
   --slate-900: #0f172a;
@@ -26,25 +29,26 @@
 
   --emerald: #059669;
   --emerald-subtle: #ecfdf5;
-  --amber: #d97706;
+  --amber: #b45309;
   --amber-subtle: #fffbeb;
-  --rose: #dc2626;
+  --rose: #b91c1c;
   --rose-subtle: #fef2f2;
 
   --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --font-mono: 'JetBrains Mono', monospace;
 
+  --radius-xs: 4px;
   --radius-sm: 6px;
   --radius-md: 10px;
-  --radius-lg: 16px;
+  --radius-lg: 14px;
   --radius-full: 9999px;
 
-  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.07), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
-  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.08), 0 4px 6px -4px rgba(0, 0, 0, 0.04);
+  --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.04);
+  --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.06), 0 2px 4px -2px rgba(0, 0, 0, 0.04);
+  --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.07), 0 4px 6px -4px rgba(0, 0, 0, 0.03);
 }
 
-/* Reset & Global */
+/* Reset & Base */
 * {
   box-sizing: border-box;
   margin: 0;
@@ -60,68 +64,134 @@ body {
   -webkit-font-smoothing: antialiased;
 }
 
-/* App Container */
+/* App Layout */
 .app-container {
   max-width: 1200px;
   margin: 0 auto;
   padding: 1.25rem 1.5rem 4rem 1.5rem;
 }
 
-/* Header */
-.navbar {
+/* --------------------------------------------------------------------------
+   VIEW 1: AUTHENTICATION / LOGIN SCREEN
+   -------------------------------------------------------------------------- */
+.login-view {
+  display: flex;
+  min-height: 100vh;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  background: var(--bg-app);
+}
+
+.login-card {
+  max-width: 420px;
+  width: 100%;
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-lg);
-  padding: 0.85rem 1.5rem;
+  padding: 2.25rem 2rem;
+  box-shadow: var(--shadow-lg);
+}
+
+.login-header {
+  text-align: center;
+  margin-bottom: 1.25rem;
+}
+
+.login-logo {
+  height: 48px;
+  width: auto;
+  margin-bottom: 0.75rem;
+}
+
+.login-header h2 {
+  font-size: 1.35rem;
+  color: var(--navy-primary);
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.login-header p {
+  font-size: 0.82rem;
+  color: var(--slate-500);
+  margin-top: 0.2rem;
+}
+
+.login-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.65rem;
+  background: var(--navy-subtle);
+  border: 1px solid rgba(7, 64, 107, 0.12);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 0.9rem;
+  font-size: 0.8rem;
+  color: var(--navy-primary);
+  line-height: 1.4;
+  margin-bottom: 1.5rem;
+}
+
+.login-notice svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* --------------------------------------------------------------------------
+   TOP NAVIGATION
+   -------------------------------------------------------------------------- */
+.navbar {
+  background: var(--bg-surface);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-md);
+  padding: 0.85rem 1.25rem;
   display: flex;
   justify-content: space-between;
   align-items: center;
   flex-wrap: wrap;
-  gap: 1rem;
+  gap: 0.75rem;
   box-shadow: var(--shadow-sm);
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.25rem;
 }
 
 .brand {
   display: flex;
   align-items: center;
-  gap: 0.85rem;
+  gap: 0.75rem;
 }
 
 .brand-logo {
-  height: 38px;
+  height: 36px;
   width: auto;
 }
 
 .brand-info h1 {
-  font-size: 1.15rem;
+  font-size: 1.1rem;
   font-weight: 700;
   color: var(--navy-primary);
   line-height: 1.2;
 }
 
 .brand-info p {
-  font-size: 0.78rem;
+  font-size: 0.76rem;
   color: var(--slate-500);
 }
 
 .nav-actions {
   display: flex;
   align-items: center;
-  gap: 0.85rem;
+  gap: 0.65rem;
   flex-wrap: wrap;
 }
 
-/* Time & Telemetry Pills */
 .status-pill {
   display: inline-flex;
   align-items: center;
-  gap: 0.45rem;
-  padding: 0.35rem 0.75rem;
+  gap: 0.4rem;
+  padding: 0.35rem 0.7rem;
   background: var(--bg-subtle);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-full);
-  font-size: 0.8rem;
+  font-size: 0.78rem;
   font-weight: 600;
   color: var(--slate-700);
 }
@@ -133,32 +203,43 @@ body {
   border-color: rgba(7, 64, 107, 0.15);
 }
 
+.status-pill.role {
+  background: var(--bg-subtle);
+  color: var(--slate-700);
+  border-color: var(--border-strong);
+}
+
 .status-pill.admin {
-  background: #f3e8ff;
-  border-color: #e9d5ff;
-  color: #7e22ce;
+  background: #f1f5f9;
+  border-color: #cbd5e1;
+  color: var(--slate-900);
+  font-weight: 700;
 }
 
-.status-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--emerald);
+.nav-username {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--slate-800);
 }
 
-/* Navigation Tabs */
+/* --------------------------------------------------------------------------
+   NAVIGATION TABS
+   -------------------------------------------------------------------------- */
 .tabs-header {
   display: flex;
-  gap: 0.4rem;
+  gap: 0.35rem;
   border-bottom: 1px solid var(--border-subtle);
-  margin-bottom: 1.5rem;
+  margin-bottom: 1.25rem;
   overflow-x: auto;
   scrollbar-width: thin;
 }
 
 .tab-link {
-  padding: 0.65rem 1.15rem;
-  font-size: 0.9rem;
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.65rem 1rem;
+  font-size: 0.86rem;
   font-weight: 600;
   color: var(--slate-600);
   background: transparent;
@@ -179,7 +260,6 @@ body {
   background: rgba(7, 64, 107, 0.03);
 }
 
-/* Views Container */
 .tab-pane {
   display: none;
 }
@@ -188,12 +268,14 @@ body {
   display: block;
 }
 
-/* Cards & Grid */
+/* --------------------------------------------------------------------------
+   CARDS & GRIDS
+   -------------------------------------------------------------------------- */
 .card {
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
-  padding: 1.35rem;
+  padding: 1.25rem;
   box-shadow: var(--shadow-sm);
   margin-bottom: 1.25rem;
 }
@@ -202,13 +284,29 @@ body {
   font-size: 1.05rem;
   font-weight: 700;
   color: var(--slate-900);
-  margin-bottom: 0.35rem;
+  margin-bottom: 0.25rem;
 }
 
 .card-desc {
   font-size: 0.82rem;
   color: var(--slate-500);
+  margin-bottom: 0.85rem;
+}
+
+.card-header-flex {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.75rem;
   margin-bottom: 1rem;
+}
+
+.card-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-wrap: wrap;
 }
 
 .grid-2 {
@@ -223,38 +321,136 @@ body {
   gap: 1.25rem;
 }
 
-/* Minimalist Hero Sniper Box */
-.sniper-box {
+/* --------------------------------------------------------------------------
+   ADMIN FRANCOTIRADOR MASIVO (AUTONOMOUS DASHBOARD)
+   -------------------------------------------------------------------------- */
+.status-dashboard-card {
   background: var(--bg-surface);
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius-lg);
-  padding: 1.75rem;
-  text-align: center;
+  border-left: 4px solid var(--navy-primary);
 }
 
-.countdown-wrapper {
-  margin: 1.25rem auto;
+.status-dashboard-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 1rem;
 }
 
-.countdown-timer {
-  font-family: var(--font-mono);
-  font-size: 2.8rem;
+.section-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--navy-primary);
+  margin-top: 0.4rem;
+  margin-bottom: 0.25rem;
+}
+
+.section-desc {
+  font-size: 0.84rem;
+  color: var(--slate-600);
+  max-width: 720px;
+  line-height: 1.45;
+}
+
+.status-summary-box {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 1rem;
+  text-align: right;
+  min-width: 190px;
+}
+
+.status-caption {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 600;
+  color: var(--slate-500);
+  letter-spacing: 0.04em;
+}
+
+.status-summary-box strong {
+  display: block;
+  font-size: 0.95rem;
+  color: var(--slate-900);
+  margin: 0.2rem 0 0.4rem 0;
+}
+
+.status-kpi-grid {
+  margin-top: 1rem;
+  padding-top: 1rem;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.kpi-card {
+  background: var(--bg-subtle);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 0.85rem 1rem;
+}
+
+.kpi-label {
+  display: block;
+  font-size: 0.7rem;
+  font-weight: 700;
+  color: var(--slate-500);
+  letter-spacing: 0.03em;
+}
+
+.kpi-value {
+  font-size: 1.15rem;
   font-weight: 700;
   color: var(--slate-900);
-  letter-spacing: -0.03em;
+  margin: 0.25rem 0 0.15rem 0;
 }
 
-.countdown-timer .ms {
-  font-size: 1.5rem;
+.kpi-subtext {
+  font-size: 0.75rem;
   color: var(--slate-500);
 }
 
-/* Forms & Inputs */
+/* Monospace Terminal Logs */
+.terminal-log-holder {
+  background: #0f172a;
+  border-radius: var(--radius-sm);
+  padding: 0.85rem 1rem;
+  max-height: 220px;
+  overflow-y: auto;
+  font-family: var(--font-mono);
+  font-size: 0.78rem;
+  line-height: 1.5;
+  color: #cbd5e1;
+}
+
+.terminal-line {
+  margin-bottom: 0.25rem;
+  word-break: break-all;
+}
+
+.terminal-line.text-muted {
+  color: #64748b;
+}
+
+.terminal-line.text-success {
+  color: #34d399;
+}
+
+.terminal-line.text-warning {
+  color: #fbbf24;
+}
+
+.terminal-line.text-danger {
+  color: #f87171;
+}
+
+/* --------------------------------------------------------------------------
+   FORMS & INPUTS
+   -------------------------------------------------------------------------- */
 .form-group {
   display: flex;
   flex-direction: column;
   gap: 0.35rem;
-  margin-bottom: 0.9rem;
+  margin-bottom: 0.85rem;
 }
 
 .form-label {
@@ -265,7 +461,7 @@ body {
 
 .form-control {
   font-family: var(--font-sans);
-  font-size: 0.9rem;
+  font-size: 0.88rem;
   color: var(--slate-800);
   padding: 0.55rem 0.85rem;
   background: var(--bg-surface);
@@ -280,54 +476,34 @@ body {
   box-shadow: 0 0 0 3px rgba(7, 64, 107, 0.1);
 }
 
-/* --------------------------------------------------------------------------
-   CUSTOM STYLED SELECT DROPDOWNS (IMAGEN 5)
-   Modern minimalist dropdown styling with custom SVG arrow
-   -------------------------------------------------------------------------- */
 select.form-control {
   appearance: none;
   -webkit-appearance: none;
-  -moz-appearance: none;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2307406b' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2307406b' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 0.85rem center;
-  background-size: 1rem;
-  padding-right: 2.5rem;
+  background-size: 0.9rem;
+  padding-right: 2.25rem;
   cursor: pointer;
-  background-color: #ffffff;
-  font-weight: 500;
 }
 
-select.form-control:hover {
-  border-color: var(--navy-primary);
-}
-
-select.form-control:focus {
-  border-color: var(--navy-primary);
-  box-shadow: 0 0 0 3px rgba(7, 64, 107, 0.12);
-}
-
-select.form-control option {
-  padding: 0.65rem;
-  background: #ffffff;
-  color: #0f172a;
-  font-size: 0.9rem;
-}
-
-/* Buttons */
+/* --------------------------------------------------------------------------
+   BUTTONS (CLEAN, MINIMALIST, NO RAINBOW GRADIENTS)
+   -------------------------------------------------------------------------- */
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 0.45rem;
-  padding: 0.55rem 1.15rem;
+  padding: 0.55rem 1rem;
   font-family: var(--font-sans);
-  font-size: 0.88rem;
+  font-size: 0.86rem;
   font-weight: 600;
   border-radius: var(--radius-sm);
   border: 1px solid transparent;
   cursor: pointer;
   transition: all 0.15s ease;
+  white-space: nowrap;
 }
 
 .btn-primary {
@@ -340,33 +516,25 @@ select.form-control option {
 }
 
 .btn-secondary {
-  background: var(--bg-subtle);
+  background: #ffffff;
   border-color: var(--border-strong);
   color: var(--slate-700);
 }
 
 .btn-secondary:hover {
-  background: #e2e8f0;
+  background: var(--bg-subtle);
+  color: var(--slate-900);
 }
 
 .btn-danger {
-  background: var(--rose-subtle);
-  border-color: #fecaca;
+  background: #ffffff;
+  border-color: #fca5a5;
   color: var(--rose);
 }
 
 .btn-danger:hover {
-  background: var(--rose);
-  color: #ffffff;
-}
-
-.btn-success {
-  background: var(--emerald);
-  color: #ffffff;
-}
-
-.btn-success:hover {
-  background: #047857;
+  background: var(--rose-subtle);
+  border-color: var(--rose);
 }
 
 .btn-sm {
@@ -374,7 +542,13 @@ select.form-control option {
   font-size: 0.78rem;
 }
 
-/* Tables (Minimalist) */
+.btn-block {
+  width: 100%;
+}
+
+/* --------------------------------------------------------------------------
+   TABLES
+   -------------------------------------------------------------------------- */
 .table-container {
   overflow-x: auto;
   border: 1px solid var(--border-subtle);
@@ -385,19 +559,19 @@ select.form-control option {
   width: 100%;
   border-collapse: collapse;
   text-align: left;
-  font-size: 0.86rem;
+  font-size: 0.84rem;
 }
 
 .table th {
   background: var(--bg-subtle);
-  padding: 0.65rem 0.9rem;
+  padding: 0.65rem 0.85rem;
   font-weight: 600;
   color: var(--slate-600);
   border-bottom: 1px solid var(--border-subtle);
 }
 
 .table td {
-  padding: 0.75rem 0.9rem;
+  padding: 0.75rem 0.85rem;
   border-bottom: 1px solid var(--border-subtle);
   color: var(--slate-800);
   vertical-align: middle;
@@ -411,7 +585,9 @@ select.form-control option {
   background: #f8fafc;
 }
 
-/* Status Badges */
+/* --------------------------------------------------------------------------
+   STATUS BADGES
+   -------------------------------------------------------------------------- */
 .badge {
   display: inline-flex;
   align-items: center;
@@ -421,13 +597,98 @@ select.form-control option {
   font-weight: 600;
 }
 
-.badge-success { background: var(--emerald-subtle); color: var(--emerald); border: 1px solid rgba(5, 150, 105, 0.2); }
-.badge-warning { background: var(--amber-subtle); color: var(--amber); border: 1px solid rgba(217, 119, 6, 0.2); }
-.badge-danger { background: var(--rose-subtle); color: var(--rose); border: 1px solid rgba(220, 38, 38, 0.2); }
-.badge-neutral { background: var(--bg-subtle); color: var(--slate-600); border: 1px solid var(--border-subtle); }
+.badge-success {
+  background: var(--emerald-subtle);
+  color: var(--emerald);
+  border: 1px solid rgba(5, 150, 105, 0.25);
+}
 
-/* Meal Card (Minimalist) */
-.meal-card {
+.badge-warning {
+  background: var(--amber-subtle);
+  color: var(--amber);
+  border: 1px solid rgba(180, 83, 9, 0.25);
+}
+
+.badge-danger {
+  background: var(--rose-subtle);
+  color: var(--rose);
+  border: 1px solid rgba(185, 28, 28, 0.25);
+}
+
+.badge-neutral {
+  background: var(--bg-subtle);
+  color: var(--slate-600);
+  border: 1px solid var(--border-subtle);
+}
+
+/* --------------------------------------------------------------------------
+   STUDENT PORTAL (UNAB REPLICA)
+   -------------------------------------------------------------------------- */
+.unab-header-section {
+  margin-bottom: 1.25rem;
+}
+
+.unab-date-badge {
+  font-size: 0.86rem;
+  color: var(--slate-500);
+  font-weight: 500;
+  margin-bottom: 0.25rem;
+}
+
+.unab-main-title {
+  font-size: 1.6rem;
+  font-weight: 700;
+  color: var(--navy-primary);
+  line-height: 1.2;
+}
+
+.unab-subtitle {
+  font-size: 0.88rem;
+  color: var(--slate-600);
+  margin-top: 0.25rem;
+}
+
+.unab-campus-banner {
+  display: flex;
+  align-items: center;
+  gap: 0.85rem;
+  background: #f0f7fc;
+  border-left: 4px solid var(--navy-primary);
+  border-radius: var(--radius-sm);
+  padding: 0.75rem 1rem;
+  margin-bottom: 1.25rem;
+  font-size: 0.88rem;
+  color: var(--slate-800);
+}
+
+.unab-banner-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--navy-primary);
+}
+
+.advance-toggle-shelf {
+  display: flex;
+  gap: 0.5rem;
+  margin-bottom: 1.25rem;
+  flex-wrap: wrap;
+}
+
+.advance-toggle-shelf .btn {
+  border-radius: var(--radius-full);
+  padding: 0.45rem 1rem;
+  font-size: 0.84rem;
+}
+
+.advance-toggle-shelf .btn.active {
+  background: var(--navy-primary);
+  color: #ffffff;
+  border-color: var(--navy-primary);
+}
+
+/* Meal Card */
+.unab-card {
   background: var(--bg-surface);
   border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
@@ -435,27 +696,153 @@ select.form-control option {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
+  box-shadow: var(--shadow-sm);
 }
 
-.meal-card.unavailable {
-  background: #fbfcfe;
-  border-color: #e2e8f0;
-}
-
-.meal-quota-row {
+.unab-card-header {
   display: flex;
   justify-content: space-between;
-  background: var(--bg-subtle);
-  padding: 0.65rem 0.85rem;
-  border-radius: var(--radius-sm);
-  margin: 0.85rem 0;
-  font-size: 0.85rem;
+  align-items: center;
+  margin-bottom: 0.35rem;
 }
 
-/* Ticket & Clean QR (Imagen 3) */
+.unab-card-title {
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--slate-900);
+}
+
+.unab-badge-libre {
+  background: #fef9c3;
+  color: #854d0e;
+  border: 1px solid #fef08a;
+  border-radius: var(--radius-full);
+  font-size: 0.7rem;
+  font-weight: 700;
+  padding: 0.15rem 0.5rem;
+  letter-spacing: 0.04em;
+}
+
+.unab-time-row {
+  font-size: 0.82rem;
+  color: var(--slate-600);
+  font-weight: 500;
+  margin-bottom: 0.2rem;
+}
+
+.unab-campus-row {
+  font-size: 0.82rem;
+  color: var(--slate-500);
+  margin-bottom: 0.85rem;
+}
+
+.unab-pill-notice {
+  background: #f8fafc;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 0.5rem 0.75rem;
+  font-size: 0.78rem;
+  color: var(--slate-600);
+  margin-bottom: 1rem;
+}
+
+.unab-quota-section {
+  background: #ffffff;
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 0.85rem;
+}
+
+.unab-disponibles-row {
+  display: flex;
+  align-items: baseline;
+  gap: 0.4rem;
+  margin-bottom: 0.65rem;
+}
+
+.unab-disponibles-num {
+  font-size: 1.85rem;
+  font-weight: 700;
+  color: var(--slate-900);
+  line-height: 1;
+}
+
+.unab-disponibles-txt {
+  font-size: 0.82rem;
+  color: var(--slate-500);
+}
+
+.unab-despachados-row {
+  display: flex;
+  justify-content: space-between;
+  font-size: 0.76rem;
+  color: var(--slate-500);
+  margin-bottom: 0.4rem;
+}
+
+.unab-progress-track {
+  width: 100%;
+  height: 6px;
+  background: var(--bg-subtle);
+  border-radius: var(--radius-full);
+  overflow: hidden;
+}
+
+.unab-progress-fill {
+  height: 100%;
+  background: var(--navy-primary);
+  border-radius: var(--radius-full);
+  transition: width 0.3s ease;
+}
+
+/* Meal Card Buttons */
+.btn-unab-primary {
+  width: 100%;
+  background: var(--navy-primary);
+  color: #ffffff;
+  border: 1px solid var(--navy-primary);
+  border-radius: var(--radius-sm);
+  padding: 0.65rem;
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease;
+}
+
+.btn-unab-primary:hover {
+  background: var(--navy-hover);
+}
+
+.btn-unab-reserved {
+  width: 100%;
+  background: var(--bg-subtle);
+  color: var(--slate-700);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  padding: 0.65rem;
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.btn-unab-disabled {
+  width: 100%;
+  background: var(--bg-subtle);
+  color: var(--slate-400);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-sm);
+  padding: 0.65rem;
+  font-size: 0.86rem;
+  font-weight: 600;
+  cursor: not-allowed;
+}
+
+/* --------------------------------------------------------------------------
+   TICKETS & DIGITAL PASS
+   -------------------------------------------------------------------------- */
 .ticket-wrapper {
   background: var(--bg-surface);
-  border: 1px solid var(--border-strong);
+  border: 1px solid var(--border-subtle);
   border-radius: var(--radius-md);
   padding: 1.25rem;
   margin-bottom: 1.25rem;
@@ -484,7 +871,48 @@ select.form-control option {
   justify-content: center;
 }
 
-/* Modal */
+.qr-canvas-frame {
+  padding: 10px;
+  background: #ffffff;
+  border: 2px solid var(--navy-primary);
+  border-radius: var(--radius-sm);
+  margin-bottom: 1rem;
+}
+
+.qr-holder-inner {
+  width: 190px;
+  height: 190px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto;
+}
+
+.pass-details-table {
+  width: 100%;
+  border-top: 1px dashed var(--border-strong);
+  padding-top: 0.75rem;
+  font-size: 0.84rem;
+  text-align: left;
+}
+
+.pass-row {
+  display: flex;
+  justify-content: space-between;
+  margin-bottom: 0.35rem;
+}
+
+.pass-row span {
+  color: var(--slate-500);
+}
+
+.pass-row strong {
+  color: var(--navy-primary);
+}
+
+/* --------------------------------------------------------------------------
+   MODALS
+   -------------------------------------------------------------------------- */
 .modal-overlay {
   position: fixed;
   top: 0; left: 0; width: 100vw; height: 100vh;
@@ -523,8 +951,17 @@ select.form-control option {
 }
 
 .modal-header h3 {
-  font-size: 1rem;
+  font-size: 0.95rem;
   font-weight: 600;
+}
+
+.modal-close-btn {
+  background: none;
+  border: none;
+  color: #ffffff;
+  font-size: 1.4rem;
+  line-height: 1;
+  cursor: pointer;
 }
 
 .modal-body {
@@ -535,8 +972,7 @@ select.form-control option {
 }
 
 /* --------------------------------------------------------------------------
-   WHITE MINIMALIST TOAST NOTIFICATIONS (POINT 3)
-   Clean white background, slate text, left colored indicator line
+   WHITE MINIMALIST TOAST NOTIFICATIONS
    -------------------------------------------------------------------------- */
 .toast-shelf {
   position: fixed;
@@ -544,25 +980,25 @@ select.form-control option {
   right: 1.5rem;
   display: flex;
   flex-direction: column;
-  gap: 0.6rem;
+  gap: 0.5rem;
   z-index: 9999;
 }
 
 .toast-msg {
   background: #ffffff;
   color: var(--slate-900);
-  padding: 0.85rem 1.25rem;
+  padding: 0.75rem 1.15rem;
   border-radius: var(--radius-sm);
-  font-size: 0.88rem;
+  font-size: 0.84rem;
   font-weight: 500;
   border: 1px solid var(--border-subtle);
-  border-left: 4px solid var(--navy-primary);
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.1), 0 8px 10px -6px rgba(0, 0, 0, 0.05);
+  border-left: 3px solid var(--navy-primary);
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.08), 0 8px 10px -6px rgba(0, 0, 0, 0.04);
   display: flex;
   align-items: center;
   gap: 0.65rem;
-  min-width: 270px;
-  max-width: 420px;
+  min-width: 260px;
+  max-width: 380px;
   animation: slideInToast 0.2s cubic-bezier(0.16, 1, 0.3, 1);
   transition: opacity 0.25s ease;
 }
@@ -580,13 +1016,12 @@ select.form-control option {
 }
 
 @keyframes slideInToast {
-  from { transform: translateY(12px); opacity: 0; }
+  from { transform: translateY(10px); opacity: 0; }
   to { transform: translateY(0); opacity: 1; }
 }
 
 /* --------------------------------------------------------------------------
-   100% RESPONSIVE DESIGN (POINT 4)
-   Fluid mobile and tablet layouts
+   100% RESPONSIVE DESIGN (MOBILE, TABLET, DESKTOP)
    -------------------------------------------------------------------------- */
 @media (max-width: 768px) {
   .app-container {
@@ -596,8 +1031,8 @@ select.form-control option {
   .navbar {
     flex-direction: column;
     align-items: stretch;
-    gap: 0.85rem;
-    padding: 1rem;
+    gap: 0.75rem;
+    padding: 0.85rem 1rem;
   }
 
   .brand {
@@ -609,45 +1044,27 @@ select.form-control option {
     width: 100%;
   }
 
-  .tabs-header {
-    gap: 0.25rem;
-    padding-bottom: 0.25rem;
-  }
-
-  .tab-link {
-    padding: 0.55rem 0.85rem;
-    font-size: 0.82rem;
-  }
-
   .grid-2, .grid-3 {
     grid-template-columns: 1fr;
+    gap: 1rem;
   }
 
-  .countdown-timer {
-    font-size: 2.2rem;
+  .status-dashboard-header {
+    flex-direction: column;
   }
 
-  .countdown-timer .ms {
-    font-size: 1.15rem;
+  .status-summary-box {
+    text-align: left;
+    width: 100%;
   }
 
   .ticket-wrapper {
     flex-direction: column;
     align-items: stretch;
-    gap: 1rem;
   }
 
   .qr-box {
     width: 100%;
-  }
-
-  .table-container {
-    border-radius: var(--radius-sm);
-  }
-
-  .table th, .table td {
-    padding: 0.55rem 0.65rem;
-    font-size: 0.8rem;
   }
 
   .toast-shelf {
@@ -660,212 +1077,4 @@ select.form-control option {
     min-width: unset;
     width: 100%;
   }
-}
-
-/* --------------------------------------------------------------------------
-   UNAB PORTAL EXACT REPLICA STYLES (IMAGEN 2)
-   -------------------------------------------------------------------------- */
-.unab-header-section {
-  margin-bottom: 1.25rem;
-}
-
-.unab-date-badge {
-  font-size: 0.88rem;
-  color: var(--slate-500);
-  font-weight: 500;
-  margin-bottom: 0.25rem;
-}
-
-.unab-main-title {
-  font-size: 1.65rem;
-  font-weight: 700;
-  color: var(--navy-primary);
-  line-height: 1.2;
-}
-
-.unab-subtitle {
-  font-size: 0.9rem;
-  color: var(--slate-600);
-  margin-top: 0.25rem;
-}
-
-.unab-campus-banner {
-  display: flex;
-  align-items: center;
-  gap: 0.85rem;
-  background: #f0f7fc;
-  border-left: 4px solid var(--navy-primary);
-  border-radius: var(--radius-sm);
-  padding: 0.85rem 1.15rem;
-  margin-bottom: 1.5rem;
-  font-size: 0.92rem;
-  color: var(--slate-800);
-}
-
-.advance-toggle-shelf {
-  display: flex;
-  gap: 0.65rem;
-  margin-bottom: 1.5rem;
-  flex-wrap: wrap;
-}
-
-.advance-toggle-shelf .btn {
-  border-radius: var(--radius-full);
-  padding: 0.45rem 1rem;
-  font-size: 0.85rem;
-}
-
-/* UNAB Meal Card (Imagen 2) */
-.unab-card {
-  background: var(--bg-surface);
-  border: 1px solid var(--border-subtle);
-  border-radius: var(--radius-md);
-  padding: 1.35rem;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  box-shadow: var(--shadow-sm);
-  transition: transform 0.15s ease, box-shadow 0.15s ease;
-}
-
-.unab-card:hover {
-  box-shadow: var(--shadow-md);
-}
-
-.unab-card-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 0.35rem;
-}
-
-.unab-card-title {
-  font-size: 1.25rem;
-  font-weight: 700;
-  color: var(--slate-900);
-}
-
-.unab-badge-libre {
-  background: #fef9c3;
-  color: #854d0e;
-  font-size: 0.72rem;
-  font-weight: 700;
-  padding: 0.2rem 0.55rem;
-  border-radius: 4px;
-  letter-spacing: 0.04em;
-}
-
-.unab-time-row {
-  font-size: 0.82rem;
-  color: var(--slate-500);
-  font-family: var(--font-mono);
-  margin-bottom: 0.15rem;
-}
-
-.unab-campus-row {
-  font-size: 0.88rem;
-  font-weight: 700;
-  color: var(--slate-800);
-  margin-bottom: 0.85rem;
-}
-
-.unab-pill-notice {
-  background: #f0f7fc;
-  border-radius: 6px;
-  padding: 0.6rem 0.85rem;
-  font-size: 0.82rem;
-  color: var(--slate-700);
-  margin-bottom: 1.25rem;
-}
-
-.unab-quota-section {
-  margin-bottom: 1.25rem;
-}
-
-.unab-disponibles-row {
-  display: flex;
-  align-items: baseline;
-  gap: 0.4rem;
-  margin-bottom: 0.5rem;
-}
-
-.unab-disponibles-num {
-  font-size: 2rem;
-  font-weight: 700;
-  color: var(--slate-900);
-  line-height: 1;
-}
-
-.unab-disponibles-txt {
-  font-size: 0.85rem;
-  color: var(--slate-600);
-}
-
-.unab-despachados-row {
-  display: flex;
-  justify-content: space-between;
-  font-size: 0.78rem;
-  color: var(--slate-600);
-  margin-bottom: 0.4rem;
-}
-
-.unab-progress-track {
-  width: 100%;
-  height: 6px;
-  background: #e2e8f0;
-  border-radius: 3px;
-  overflow: hidden;
-}
-
-.unab-progress-fill {
-  height: 100%;
-  background: var(--navy-primary);
-  border-radius: 3px;
-}
-
-/* Button variants matching Image 2 */
-.btn-unab-disabled {
-  background: #7596b0 !important;
-  color: #ffffff !important;
-  border: none !important;
-  cursor: not-allowed !important;
-  font-weight: 600;
-  border-radius: 6px;
-  padding: 0.65rem;
-  width: 100%;
-  text-align: center;
-}
-
-.btn-unab-reserved {
-  background: #ffffff !important;
-  color: var(--navy-primary) !important;
-  border: 1px solid #cbd5e1 !important;
-  font-weight: 600;
-  border-radius: 6px;
-  padding: 0.65rem;
-  width: 100%;
-  text-align: center;
-  transition: all 0.15s ease;
-}
-
-.btn-unab-reserved:hover {
-  border-color: var(--navy-primary) !important;
-  background: var(--navy-subtle) !important;
-}
-
-.btn-unab-primary {
-  background: var(--navy-primary) !important;
-  color: #ffffff !important;
-  font-weight: 600;
-  border-radius: 6px;
-  padding: 0.65rem;
-  width: 100%;
-  border: none;
-  text-align: center;
-  cursor: pointer;
-  transition: background 0.15s ease;
-}
-
-.btn-unab-primary:hover {
-  background: var(--navy-hover) !important;
 }

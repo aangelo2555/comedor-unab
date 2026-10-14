@@ -3,69 +3,87 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Comedor UNAB · Sistema de Reservas</title>
+  <title>Comedor UNAB · Sistema de Reservas & Autopilot</title>
   <link rel="icon" href="/assets/favicon.ico">
   <link rel="stylesheet" href="/style.css">
   <script src="/qrcode.min.js"></script>
 </head>
 <body>
 
-  <!-- VIEW 1: AUTHENTICATION SCREEN (LOGIN) - CLEAN, NO QUICK ACCESS BUTTONS -->
-  <div id="view-login" style="display: flex; min-height: 100vh; align-items: center; justify-content: center; padding: 1.5rem;">
-    <div class="card" style="max-width: 400px; width: 100%; padding: 2.25rem 2rem; box-shadow: var(--shadow-lg);">
-      <div style="text-align: center; margin-bottom: 1.5rem;">
-        <img src="/assets/logo_unab.png" alt="UNAB" style="height: 48px; margin-bottom: 0.75rem;" onerror="this.style.display='none'">
-        <h2 style="font-size: 1.35rem; color: var(--navy-primary); font-weight: 700;">Comedor Universitario</h2>
-        <p style="font-size: 0.85rem; color: var(--slate-500);">Ingresa con tu cuenta institucional o de administrador</p>
+  <!-- VIEW 1: AUTHENTICATION SCREEN (LOGIN & AUTO-REGISTRO) -->
+  <div id="view-login" class="login-view">
+    <div class="login-card">
+      <div class="login-header">
+        <img src="/assets/logo_unab.png" alt="UNAB" class="login-logo" onerror="this.style.display='none'">
+        <h2>Comedor Universitario</h2>
+        <p>Universidad Nacional de Barranca</p>
+      </div>
+
+      <div class="login-notice">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="10"></circle>
+          <line x1="12" y1="16" x2="12" y2="12"></line>
+          <line x1="12" y1="8" x2="12.01" y2="8"></line>
+        </svg>
+        <span>Ingresa con tu código y contraseña institucional. El registro de tu cuenta se realiza automáticamente en tu primer acceso.</span>
       </div>
 
       <form id="loginForm">
         <div class="form-group">
-          <label class="form-label">Usuario / Código UNAB</label>
+          <label class="form-label" for="loginUsername">Usuario / Código UNAB</label>
           <input type="text" class="form-control" id="loginUsername" placeholder="Ej: 222.0113.028" required autocomplete="username">
         </div>
         <div class="form-group">
-          <label class="form-label">Contraseña</label>
-          <input type="password" class="form-control" id="loginPassword" placeholder="Contraseña institucional" required autocomplete="current-password">
+          <label class="form-label" for="loginPassword">Contraseña Institucional</label>
+          <input type="password" class="form-control" id="loginPassword" placeholder="Contraseña institucional UNAB" required autocomplete="current-password">
         </div>
-        <button type="submit" class="btn btn-primary" style="width: 100%; margin-top: 1rem; padding: 0.65rem;" id="btnLoginSubmit">
-          Iniciar Sesión
+        <button type="submit" class="btn btn-primary btn-block" id="btnLoginSubmit">
+          Ingresar al Sistema
         </button>
       </form>
     </div>
   </div>
 
-  <!-- VIEW 2: AUTHENTICATED APP (100% RESPONSIVE) -->
+  <!-- VIEW 2: AUTHENTICATED APP -->
   <div id="view-app" class="app-container" style="display: none;">
-    <!-- Navigation Bar -->
+    
+    <!-- Top Navigation Bar -->
     <header class="navbar">
       <div class="brand">
         <img src="/assets/logo_unab.png" alt="UNAB" class="brand-logo" onerror="this.style.display='none'">
         <div class="brand-info">
-          <h1>Comedor UNAB · Reservas</h1>
-          <p id="appSubtitle">Universidad Nacional de Barranca</p>
+          <h1>Comedor UNAB</h1>
+          <p id="appSubtitle">Portal de Reservas</p>
         </div>
       </div>
 
       <div class="nav-actions">
-        <!-- Live Time Peru UTC-5 -->
-        <div class="status-pill time" title="Hora sincronizada de Perú (America/Lima)">
-          <span class="status-dot"></span>
+        <!-- Live Clock (Lima UTC-5) -->
+        <div class="status-pill time" title="Hora sincronizada Perú (America/Lima)">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <polyline points="12 6 12 12 16 14"></polyline>
+          </svg>
           <span id="liveClockText">--:--:--</span>
         </div>
 
         <!-- Role Pill -->
-        <span class="status-pill" id="userRoleBadge">Estudiante</span>
+        <span class="status-pill role" id="userRoleBadge">Estudiante</span>
 
-        <!-- RAM Telemetry (SuperAdmin) -->
-        <span class="status-pill" id="ramPill" style="display: none;" title="Consumo de memoria RAM en Railway">
+        <!-- Server RAM (SuperAdmin only) -->
+        <span class="status-pill" id="ramPill" style="display: none;" title="Consumo de RAM en servidor">
           RAM: <span id="ramUsageVal">--</span> MB
         </span>
 
         <!-- User Name -->
-        <span style="font-size: 0.85rem; font-weight: 600; color: var(--slate-800);" id="topUserName">Usuario</span>
+        <span class="nav-username" id="topUserName">Usuario</span>
 
         <button class="btn btn-secondary btn-sm" id="btnLogout" title="Cerrar sesión">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+            <polyline points="16 17 21 12 16 7"></polyline>
+            <line x1="21" y1="12" x2="9" y2="12"></line>
+          </svg>
           Salir
         </button>
       </div>
@@ -74,22 +92,155 @@
     <!-- SECTION: SUPERADMIN PANEL -->
     <div id="panel-superadmin" style="display: none;">
       <nav class="tabs-header">
-        <button class="tab-link active" data-target="admin-tab-users">👥 Gestión de Alumnos</button>
-        <button class="tab-link" data-target="admin-tab-sniper">🎯 Francotirador Masivo</button>
-        <button class="tab-link" data-target="admin-tab-reservas">📋 Historial de Reservas</button>
-        <button class="tab-link" data-target="admin-tab-server">⚡ Métricas del Servidor (RAM)</button>
+        <button class="tab-link active" data-target="admin-tab-sniper">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <circle cx="12" cy="12" r="10"></circle>
+            <line x1="22" y1="12" x2="18" y2="12"></line>
+            <line x1="6" y1="12" x2="2" y2="12"></line>
+            <line x1="12" y1="6" x2="12" y2="2"></line>
+            <line x1="12" y1="22" x2="12" y2="18"></line>
+          </svg>
+          Francotirador Masivo
+        </button>
+        <button class="tab-link" data-target="admin-tab-users">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+            <circle cx="9" cy="7" r="4"></circle>
+            <path d="M23 21v-2a4 4 0 0 0-3-3.87"></path>
+            <path d="M16 3.13a4 4 0 0 1 0 7.75"></path>
+          </svg>
+          Gestión de Alumnos
+        </button>
+        <button class="tab-link" data-target="admin-tab-reservas">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="4" width="18" height="18" rx="2" ry="2"></rect>
+            <line x1="16" y1="2" x2="16" y2="6"></line>
+            <line x1="8" y1="2" x2="8" y2="6"></line>
+            <line x1="3" y1="10" x2="21" y2="10"></line>
+          </svg>
+          Historial de Reservas
+        </button>
+        <button class="tab-link" data-target="admin-tab-server">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="2" y="2" width="20" height="8" rx="2" ry="2"></rect>
+            <rect x="2" y="14" width="20" height="8" rx="2" ry="2"></rect>
+            <line x1="6" y1="6" x2="6.01" y2="6"></line>
+            <line x1="6" y1="18" x2="6.01" y2="18"></line>
+          </svg>
+          Métricas del Servidor
+        </button>
       </nav>
 
-      <!-- Admin Tab 1: User Management with Consolidated Reservations Column -->
-      <div class="tab-pane active" id="admin-tab-users">
-        <div class="card">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.75rem;">
+      <!-- Admin Tab 1: Francotirador Masivo (Refactorizado: Lógica 100% Automática) -->
+      <div class="tab-pane active" id="admin-tab-sniper">
+        
+        <!-- Estado General del Motor en Servidor -->
+        <div class="card status-dashboard-card">
+          <div class="status-dashboard-header">
             <div>
-              <h2 class="card-title">Gestión Integral de Alumnos</h2>
+              <span class="badge badge-neutral" id="adminSniperStatusBadge">SISTEMA AUTÓNOMO ACTIVO</span>
+              <h2 class="section-title">Disparador Autónomo de Reservas Anticipadas</h2>
+              <p class="section-desc">
+                El servidor ejecuta reservas automáticamente en el horario oficial de apertura (Desayuno 06:30, Almuerzo 11:00, Cena 17:00) únicamente cuando existan reservas anticipadas en cola. Si no hay reservas, permanece en reposo sin consumir recursos.
+              </p>
+            </div>
+            <div class="status-summary-box">
+              <span class="status-caption">PRÓXIMO HORARIO</span>
+              <strong id="railwayNextOpeningBadge">--</strong>
+              <span class="badge badge-neutral" id="railwayNextAdvanceCount">0 reservas registradas</span>
+            </div>
+          </div>
+
+          <!-- Métricas de estado en tiempo real -->
+          <div class="grid-3 status-kpi-grid">
+            <div class="kpi-card">
+              <span class="kpi-label">ESTADO FRANCOTIRADOR</span>
+              <div class="kpi-value" id="autoSniperLiveStatus">En Reposo</div>
+              <span class="kpi-subtext" id="adminSniperSystemStatus">Listo</span>
+            </div>
+            <div class="kpi-card">
+              <span class="kpi-label">ESTADO CENTINELA</span>
+              <div class="kpi-value" id="autoSentinelLiveStatus">En Reposo</div>
+              <span class="kpi-subtext">Monitorea cupos liberados</span>
+            </div>
+            <div class="kpi-card">
+              <span class="kpi-label">ALUMNOS EN COLA ACTIVA</span>
+              <div class="kpi-value" id="autoQueueLiveCount">0 alumnos</div>
+              <span class="kpi-subtext">Esperando apertura o liberación</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Cola de Reservas Anticipadas en Espera -->
+        <div class="card">
+          <div class="card-header-flex">
+            <div>
+              <h2 class="card-title">Cola Activa de Reservas Anticipadas</h2>
+              <p class="card-desc">
+                Alumnos con reserva programada para el próximo servicio. Las reservas registradas posterior al inicio de apertura se procesan de inmediato si existen cupos, o se mantienen en cola centinela si los cupos están temporalmente agotados.
+              </p>
+            </div>
+            <div class="card-actions">
+              <span class="badge badge-neutral" id="sentinelQueueCountBadge">0 en cola</span>
+              <button class="btn btn-secondary btn-sm" id="btnRefreshSentinelQueue">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                  <polyline points="23 4 23 10 17 10"></polyline>
+                  <polyline points="1 20 1 14 7 14"></polyline>
+                  <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+                </svg>
+                Actualizar
+              </button>
+              <button class="btn btn-secondary btn-sm" id="btnAdminForceFire" title="Disparo inmediato de prueba para alumnos en cola">
+                Ejecutar Disparo Inmediato
+              </button>
+            </div>
+          </div>
+
+          <div class="table-container">
+            <table class="table" id="tableSentinelQueue">
+              <thead>
+                <tr>
+                  <th>Alumno</th>
+                  <th>DNI</th>
+                  <th>Servicio</th>
+                  <th>Fecha de Atención</th>
+                  <th>Hora Registro</th>
+                  <th>Estado</th>
+                  <th>Acción</th>
+                </tr>
+              </thead>
+              <tbody id="sentinelQueueTableBody">
+                <!-- Inyectado vía JS -->
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Terminal de Auditoría del Servidor (Exclusivo Administrador) -->
+        <div class="card">
+          <div class="card-header-flex">
+            <div>
+              <h2 class="card-title">Registro de Eventos del Servidor</h2>
+              <p class="card-desc">Auditoría en tiempo real de operaciones, aperturas y capturas generadas por el sistema.</p>
+            </div>
+          </div>
+          <div class="terminal-log-holder" id="adminLogTerminal">
+            <div class="terminal-line text-muted">[SISTEMA] Motor de reservas 24/7 activo en servidor.</div>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Admin Tab 2: Gestión de Alumnos -->
+      <div class="tab-pane" id="admin-tab-users">
+        <div class="card">
+          <div class="card-header-flex">
+            <div>
+              <h2 class="card-title">Padrón de Estudiantes</h2>
               <p class="card-desc">Control de cuentas y visualización unificada de reservas realizadas por cada estudiante.</p>
             </div>
             <button class="btn btn-primary btn-sm" id="btnOpenAddUserModal">
-              + Agregar Alumno
+              + Registrar Alumno Manual
             </button>
           </div>
 
@@ -100,192 +251,34 @@
                   <th>Alumno / Código</th>
                   <th>DNI</th>
                   <th>Sede</th>
-                  <th>Gestión de Reservas (Mañana y Hoy)</th>
-                  <th>Auto-Sniper</th>
+                  <th>Gestión de Reservas (Hoy y Mañana)</th>
+                  <th>Auto-Reserva</th>
                   <th>Acciones</th>
                 </tr>
               </thead>
               <tbody id="adminUsersTableBody">
-                <!-- Injected via JS with unified single-column reservation history -->
+                <!-- Inyectado vía JS -->
               </tbody>
             </table>
           </div>
         </div>
       </div>
 
-      <!-- Admin Tab 2: Intelligent Multi-Meal Scheduled Mass Sniper -->
-      <div class="tab-pane" id="admin-tab-sniper">
-        <!-- Railway 24/7 Autopilot Telemetry Banner -->
-        <div class="card" style="margin-bottom: 1.25rem; border-left: 4px solid var(--emerald); background: linear-gradient(135deg, rgba(5,150,105,0.04), rgba(7,64,107,0.03));">
-          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.75rem;">
-            <div>
-              <div style="display: flex; align-items: center; gap: 0.5rem; flex-wrap: wrap;">
-                <span class="badge badge-success" style="font-weight: 700;">🟢 MOTOR FERROVIARIO AUTOMÁTICO (RAILWAY 24/7)</span>
-                <span class="badge badge-neutral" id="railwayNextOpeningBadge">Próxima apertura: --</span>
-              </div>
-              <h3 style="margin: 0.4rem 0 0.2rem 0; font-size: 1.15rem; color: var(--navy-primary);">Automatismo Inteligente por Citas Anticipadas</h3>
-              <p style="font-size: 0.82rem; color: var(--slate-600); margin: 0;">
-                El francotirador solo se activará si hay al menos una cita anticipada activa para esa comida. Si no hay citas, permanece en reposo.
-              </p>
-            </div>
-            <div style="text-align: right;">
-              <span class="badge badge-warning" id="railwayNextAdvanceCount">0 reservas registradas</span>
-            </div>
-          </div>
-
-          <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr)); gap: 0.75rem; margin-top: 1rem;">
-            <div style="background: #ffffff; padding: 0.75rem 1rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
-              <span style="font-size: 0.72rem; color: var(--slate-500); font-weight: 600;">ESTADO FRANCOTIRADOR</span>
-              <div style="font-size: 0.92rem; font-weight: 700; color: var(--navy-primary); margin-top: 0.2rem;" id="autoSniperLiveStatus">En Reposo (0 citas)</div>
-            </div>
-            <div style="background: #ffffff; padding: 0.75rem 1rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
-              <span style="font-size: 0.72rem; color: var(--slate-500); font-weight: 600;">ESTADO CENTINELA DE LIBERADOS</span>
-              <div style="font-size: 0.92rem; font-weight: 700; color: var(--emerald); margin-top: 0.2rem;" id="autoSentinelLiveStatus">En Reposo (Auto-apagado)</div>
-            </div>
-            <div style="background: #ffffff; padding: 0.75rem 1rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle);">
-              <span style="font-size: 0.72rem; color: var(--slate-500); font-weight: 600;">COLA DE LIBERADOS EN VIVO</span>
-              <div style="font-size: 0.92rem; font-weight: 700; color: #d97706; margin-top: 0.2rem;" id="autoQueueLiveCount">0 alumnos en cola</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="grid-2">
-          <div class="card sniper-box">
-            <span class="badge badge-success" id="adminSniperStatusBadge">PROGRAMACIÓN INTELIGENTE ACTIVA</span>
-            <h2 style="font-size: 1.25rem; font-weight: 700; margin: 0.75rem 0 0.25rem 0;">Francotirador Centralizado Multi-Horario</h2>
-            <p class="card-desc">Captura automatizada e inteligente de cupos para Desayuno, Almuerzo y Cena sin sobrecargar el servidor.</p>
-
-            <div style="background: var(--bg-subtle); padding: 1rem; border-radius: var(--radius-sm); border: 1px solid var(--border-subtle); margin: 1.25rem 0; text-align: left;">
-              <div style="font-size: 0.82rem; color: var(--slate-700); margin-bottom: 0.5rem;">
-                <strong>Estado del Sistema:</strong> <span id="adminSniperSystemStatus" style="color: var(--emerald); font-weight: 600;">Listo para auto-disparo / centinela</span>
-              </div>
-              <div style="font-size: 0.8rem; color: var(--slate-500);">
-                Motor centinela reactivo: monitorea cupos liberados en tiempo real y ejecuta reservas automáticas inmediatas para los 3 servicios.
-              </div>
-            </div>
-
-            <!-- Intelligent Meal and Date Selector -->
-            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 0.75rem; text-align: left; margin: 1.25rem 0;">
-              <div class="form-group">
-                <label class="form-label">Comida Objetivo</label>
-                <select class="form-control" id="adminSniperMealSelect">
-                  <option value="INTELIGENTE" selected>🎯 MODO INTELIGENTE (Multi-Comida según Citas)</option>
-                  <option value="ALMUERZO">🍲 Solo ALMUERZO (11:00 - 16:00)</option>
-                  <option value="DESAYUNO">☕ Solo DESAYUNO (06:30 - 10:30)</option>
-                  <option value="CENA">🌙 Solo CENA (17:00 - 19:00)</option>
-                  <option value="TODAS">⚡ TODAS LAS COMIDAS (3 Servicios)</option>
-                </select>
-              </div>
-              <div class="form-group">
-                <label class="form-label">Fecha de Atención</label>
-                <input type="date" class="form-control" id="adminSniperDateInput">
-              </div>
-            </div>
-
-            <!-- Time Input (Auto-synced with selected meal) -->
-            <div style="margin-bottom: 1.25rem; text-align: left;">
-              <div class="form-group" style="margin-bottom: 0;">
-                <label class="form-label">Hora Programada de Apertura (Lima UTC-5)</label>
-                <input type="time" step="1" class="form-control" id="adminSniperTimeInput" value="11:00:00">
-              </div>
-            </div>
-
-            <div style="display: flex; gap: 0.5rem; justify-content: center; flex-wrap: wrap;">
-              <button class="btn btn-primary" id="btnAdminArmSniper" style="flex: 1; min-width: 180px;">
-                🚀 Armar Francotirador a las 11:00
-              </button>
-              <button class="btn btn-secondary" id="btnAdminStartSentinel" style="flex: 1; min-width: 180px;" title="Monitoreo continuo para atrapar cupos liberados por cancelaciones">
-                🛡️ Activar Centinela de Liberados
-              </button>
-              <button class="btn btn-secondary btn-sm" id="btnAdminStopAll" title="Detener francotirador y centinela">
-                ⏹️ Detener
-              </button>
-              <button class="btn btn-secondary btn-sm" id="btnAdminForceFire" title="Disparo inmediato de prueba">
-                ⚡ Forzar Disparo Inmediato
-              </button>
-            </div>
-          </div>
-
-          <!-- Official Schedule Info Card (Valores reales de UNAB API) -->
-          <div class="card">
-            <h2 class="card-title">Ventanas de Atención Oficial UNAB</h2>
-            <p class="card-desc">Horarios oficiales del comedor aprobados por Bienestar Universitario y sincronizados con la API.</p>
-            
-            <div style="display: flex; flex-direction: column; gap: 0.75rem; margin-top: 1rem;">
-              <div style="background: var(--bg-subtle); padding: 0.85rem; border-radius: var(--radius-sm); border-left: 3px solid var(--amber);">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                  <strong>☕ Desayuno</strong>
-                  <span class="badge badge-neutral" style="font-size: 0.7rem;">06:30 - 10:30</span>
-                </div>
-                <p style="font-size: 0.82rem; color: var(--slate-600); margin-top: 0.25rem;">Horario oficial de atención y reserva: 06:30:00 - 10:30:00</p>
-                <p style="font-size: 0.75rem; color: var(--slate-500); margin-top: 0.2rem;">Captura automática y monitoreo de cancelaciones activas.</p>
-              </div>
-              <div style="background: var(--bg-subtle); padding: 0.85rem; border-radius: var(--radius-sm); border-left: 3px solid var(--navy-primary);">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                  <strong>🍲 Almuerzo (Principal)</strong>
-                  <span class="badge badge-neutral" style="font-size: 0.7rem;">11:00 - 16:00</span>
-                </div>
-                <p style="font-size: 0.82rem; color: var(--slate-600); margin-top: 0.25rem;">Horario oficial de atención y reserva: 11:00:00 - 16:00:00</p>
-                <p style="font-size: 0.75rem; color: var(--emerald); font-weight: 600; margin-top: 0.2rem;">Centinela activo: Detecta cupos liberados durante el horario de atención.</p>
-              </div>
-              <div style="background: var(--bg-subtle); padding: 0.85rem; border-radius: var(--radius-sm); border-left: 3px solid #7e22ce;">
-                <div style="display: flex; justify-content: space-between; align-items: center;">
-                  <strong>🌙 Cena</strong>
-                  <span class="badge badge-neutral" style="font-size: 0.7rem;">17:00 - 19:00</span>
-                </div>
-                <p style="font-size: 0.82rem; color: var(--slate-600); margin-top: 0.25rem;">Horario oficial de atención y reserva: 17:00:00 - 19:00:00</p>
-                <p style="font-size: 0.75rem; color: var(--slate-500); margin-top: 0.2rem;">Apertura a las 17:00:00 con sondeo continuo de tickets libres.</p>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Live Sentinel Queue Section (Visualización en tiempo real de la cola) -->
-        <div class="card" style="margin-top: 1.25rem;">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.75rem; flex-wrap: wrap; gap: 0.5rem;">
-            <div>
-              <h2 class="card-title">🛡️ Cola en Vivo del Centinela (Cupos Liberados)</h2>
-              <p class="card-desc">
-                Alumnos en espera activa de cancelaciones o cupos liberados. El Centinela se apaga automáticamente cuando todos reciben su ticket.
-              </p>
-            </div>
-            <div style="display: flex; align-items: center; gap: 0.5rem;">
-              <span class="badge badge-neutral" id="sentinelQueueCountBadge">0 en cola</span>
-              <button class="btn btn-secondary btn-sm" id="btnRefreshSentinelQueue">🔄 Actualizar</button>
-            </div>
-          </div>
-
-          <div class="table-container">
-            <table class="table" id="tableSentinelQueue">
-              <thead>
-                <tr>
-                  <th>Alumno / Código</th>
-                  <th>DNI</th>
-                  <th>Comida</th>
-                  <th>Fecha</th>
-                  <th>Hora de Entrada en Cola</th>
-                  <th>Estado</th>
-                  <th>Acción</th>
-                </tr>
-              </thead>
-              <tbody id="sentinelQueueTableBody">
-                <!-- Injected via JS -->
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-
-      <!-- Admin Tab 3: All Reservations -->
+      <!-- Admin Tab 3: Historial de Reservas -->
       <div class="tab-pane" id="admin-tab-reservas">
         <div class="card">
-          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1rem; flex-wrap: wrap; gap: 0.5rem;">
+          <div class="card-header-flex">
             <div>
               <h2 class="card-title">Historial Global de Tickets y Citas</h2>
               <p class="card-desc">Registro centralizado de reservas confirmadas y citas anticipadas de los alumnos.</p>
             </div>
             <button class="btn btn-secondary btn-sm" id="btnRefreshAdminReservas">
-              🔄 Actualizar
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="23 4 23 10 17 10"></polyline>
+                <polyline points="1 20 1 14 7 14"></polyline>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+              </svg>
+              Actualizar
             </button>
           </div>
 
@@ -297,55 +290,50 @@
                   <th>Hora</th>
                   <th>Alumno</th>
                   <th>DNI</th>
-                  <th>Comida</th>
+                  <th>Servicio</th>
                   <th>Sede</th>
                   <th>Estado</th>
-                  <th>ID Ticket / Cita</th>
+                  <th>ID Ticket</th>
                 </tr>
               </thead>
               <tbody id="adminReservasTableBody">
-                <!-- Injected via JS -->
+                <!-- Inyectado vía JS -->
               </tbody>
             </table>
           </div>
         </div>
       </div>
 
-      <!-- Admin Tab 4: Server Metrics & Resilient Backup -->
+      <!-- Admin Tab 4: Métricas del Servidor -->
       <div class="tab-pane" id="admin-tab-server">
         <div class="grid-2">
           <div class="card">
-            <h2 class="card-title">Consumo de Memoria RAM</h2>
-            <p class="card-desc">Monitoreo para el contenedor en Railway (Límite: 512 MB).</p>
+            <h2 class="card-title">Métricas de Consumo RAM</h2>
+            <p class="card-desc">Monitoreo de memoria en el contenedor.</p>
             
-            <div style="display: flex; gap: 1rem; margin: 1rem 0;">
-              <div style="flex: 1; background: var(--bg-subtle); padding: 1rem; border-radius: var(--radius-sm); text-align: center;">
-                <span style="font-size: 0.75rem; color: var(--slate-500); font-weight: 600;">RAM RESIDENTE (RSS)</span>
-                <p style="font-size: 1.5rem; font-weight: 700; color: var(--navy-primary);" id="metricRss">-- MB</p>
+            <div class="grid-2" style="margin-top: 1rem;">
+              <div class="kpi-card">
+                <span class="kpi-label">MEMORIA RSS</span>
+                <div class="kpi-value" id="metricRss">-- MB</div>
+                <span class="kpi-subtext">Total ocupado</span>
               </div>
-              <div style="flex: 1; background: var(--bg-subtle); padding: 1rem; border-radius: var(--radius-sm); text-align: center;">
-                <span style="font-size: 0.75rem; color: var(--slate-500); font-weight: 600;">HEAP USADO</span>
-                <p style="font-size: 1.5rem; font-weight: 700; color: var(--emerald);" id="metricHeap">-- MB</p>
+              <div class="kpi-card">
+                <span class="kpi-label">HEAP UTILIZADO</span>
+                <div class="kpi-value" id="metricHeap">-- MB</div>
+                <span class="kpi-subtext">Objetos activos</span>
               </div>
             </div>
-
-            <p style="font-size: 0.8rem; color: var(--emerald); font-weight: 600;">
-              ✅ Rendimiento ultra-bajo garantizado (< 40MB de RAM).
-            </p>
           </div>
 
           <div class="card">
-            <h2 class="card-title">Respaldo y Persistencia (Railway)</h2>
-            <p class="card-desc">Seguridad de datos garantizada con auto-recuperación y copias JSON.</p>
-            <div style="margin-bottom: 1rem; font-size: 0.82rem; color: var(--slate-600);">
-              Tu servidor incluye auto-curación para usuarios y citas. Puedes descargar o restaurar la base de datos completa en cualquier momento:
-            </div>
-            <div style="display: flex; gap: 0.5rem; flex-wrap: wrap;">
-              <a href="/api/admin/backup" class="btn btn-primary btn-sm" download style="text-decoration: none;">
-                💾 Descargar Respaldo JSON
+            <h2 class="card-title">Respaldo de Base de Datos</h2>
+            <p class="card-desc">Exportación y restauración directa del estado persistente en formato JSON.</p>
+            <div style="display: flex; gap: 0.75rem; margin-top: 1rem;">
+              <a href="/api/admin/backup" class="btn btn-secondary" style="flex: 1;" download="comedor_unab_backup.json">
+                Descargar JSON
               </a>
-              <button class="btn btn-secondary btn-sm" id="btnTriggerRestore">
-                📥 Restaurar Respaldo JSON
+              <button class="btn btn-secondary" style="flex: 1;" id="btnTriggerRestore">
+                Restaurar JSON
               </button>
               <input type="file" id="fileRestoreInput" accept=".json" style="display: none;">
             </div>
@@ -354,56 +342,77 @@
       </div>
     </div>
 
-    <!-- SECTION: STUDENT / USER PANEL (REPLICA EXACTA IMAGEN 2 - SIN CUENTA REGRESIVA) -->
+    <!-- SECTION: STUDENT / USER PANEL -->
     <div id="panel-student" style="display: none;">
       <nav class="tabs-header">
-        <button class="tab-link active" data-target="student-tab-meals">🍽️ Reserva tu comida</button>
-        <button class="tab-link" data-target="student-tab-tickets">🎟️ Mis Reservas y QR <span class="badge badge-success" id="studentTicketsBadge">0</span></button>
-        <button class="tab-link" data-target="student-tab-status">🛡️ Mi Asistencia</button>
+        <button class="tab-link active" data-target="student-tab-meals">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M18 2v20M6 2v20M3 2v6a3 3 0 0 0 6 0V2M14 2v8a2 2 0 0 0 4 0V2"></path>
+          </svg>
+          Reserva tu comida
+        </button>
+        <button class="tab-link" data-target="student-tab-tickets">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="3" y="4" width="18" height="16" rx="2"></rect>
+            <line x1="3" y1="10" x2="21" y2="10"></line>
+          </svg>
+          Mis Reservas y QR <span class="badge badge-success" id="studentTicketsBadge">0</span>
+        </button>
+        <button class="tab-link" data-target="student-tab-status">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
+          </svg>
+          Mi Asistencia
+        </button>
       </nav>
 
-      <!-- Student Tab 1: Image 2 Style - 3 Side-by-side Meal Cards with Advance Booking -->
+      <!-- Student Tab 1: Reserva tu comida (Cards Desayuno, Almuerzo, Cena) -->
       <div class="tab-pane active" id="student-tab-meals">
         
-        <!-- Header from Image 2 -->
         <div class="unab-header-section">
           <p class="unab-date-badge" id="studentHeaderDate">Jueves, 1 De Octubre</p>
           <h2 class="unab-main-title">Reserva tu comida</h2>
           <p class="unab-subtitle">Perfil actual: <strong>libre</strong> · sede <strong>La Florida</strong></p>
         </div>
 
-        <!-- Blue Banner from Image 2 -->
         <div class="unab-campus-banner">
           <div class="unab-banner-indicator"></div>
-          <span>Tu sede principal <strong>La Florida</strong> Periodo <strong>2026-2</strong></span>
+          <span>Tu sede principal <strong>La Florida</strong> · Periodo <strong>2026-2</strong></span>
         </div>
 
-        <!-- Intuitive Date Switcher for Advance Booking (Mañana vs Hoy) -->
+        <!-- Segmented Date Switcher: Mañana vs Hoy -->
         <div class="advance-toggle-shelf">
-          <button class="btn btn-primary btn-sm active" id="btnViewTomorrow">
-            📅 Reserva Anticipada para Mañana (<span id="lblTomorrowDate">--</span>)
+          <button class="btn btn-secondary btn-sm active" id="btnViewTomorrow">
+            Reserva Anticipada para Mañana (<span id="lblTomorrowDate">--</span>)
           </button>
           <button class="btn btn-secondary btn-sm" id="btnViewToday">
-            🕒 Ver Disponibilidad de Hoy (<span id="lblTodayDate">--</span>)
+            Disponibilidad de Hoy (<span id="lblTodayDate">--</span>)
           </button>
         </div>
 
-        <!-- 3 MEAL CARDS (DESAYUNO, ALMUERZO, CENA) - REPLICA IMAGEN 2 -->
+        <!-- 3 MEAL CARDS (DESAYUNO, ALMUERZO, CENA) -->
         <div class="grid-3 unab-cards-container" id="studentMealCardsContainer">
-          <!-- Populated dynamically via JS with exact Imagen 2 design -->
+          <!-- Populated dynamically via JS -->
         </div>
 
       </div>
 
-      <!-- Student Tab 2: Tickets & QR -->
+      <!-- Student Tab 2: Mis Reservas y QR -->
       <div class="tab-pane" id="student-tab-tickets">
         <div class="card">
-          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 0.5rem;">
+          <div class="card-header-flex">
             <div>
               <h2 class="card-title">Mis Tickets y Código QR</h2>
-              <p class="card-desc">Muestra este código QR o indica tu DNI en la ventanilla del comedor.</p>
+              <p class="card-desc">Muestra este código QR oficial o indica tu DNI en la ventanilla del comedor universitario.</p>
             </div>
-            <button class="btn btn-secondary btn-sm" id="btnRefreshStudentTickets">🔄 Actualizar</button>
+            <button class="btn btn-secondary btn-sm" id="btnRefreshStudentTickets">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="23 4 23 10 17 10"></polyline>
+                <polyline points="1 20 1 14 7 14"></polyline>
+                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"></path>
+              </svg>
+              Actualizar
+            </button>
           </div>
         </div>
 
@@ -412,38 +421,40 @@
         </div>
       </div>
 
-      <!-- Student Tab 3: Attendance & Status -->
+      <!-- Student Tab 3: Asistencia y Ficha -->
       <div class="tab-pane" id="student-tab-status">
         <div class="grid-2">
           <div class="card">
             <h2 class="card-title">Control de Asistencias</h2>
-            <p class="card-desc">Límite oficial de faltas antes de sanción o bloqueo.</p>
+            <p class="card-desc">Límite oficial de inasistencias antes de sanción o bloqueo temporal.</p>
 
-            <div style="display: flex; gap: 1rem; margin: 1rem 0;">
-              <div style="flex: 1; background: var(--bg-subtle); padding: 1rem; border-radius: var(--radius-sm); text-align: center;">
-                <span style="font-size: 0.75rem; color: var(--slate-500); font-weight: 600;">INASISTENCIAS</span>
-                <p style="font-size: 1.5rem; font-weight: 700; color: var(--slate-800);" id="studentInasistencias">0</p>
+            <div class="grid-2" style="margin: 1rem 0;">
+              <div class="kpi-card">
+                <span class="kpi-label">INASISTENCIAS</span>
+                <div class="kpi-value" id="studentInasistencias">0</div>
+                <span class="kpi-subtext">Registradas este ciclo</span>
               </div>
-              <div style="flex: 1; background: var(--bg-subtle); padding: 1rem; border-radius: var(--radius-sm); text-align: center;">
-                <span style="font-size: 0.75rem; color: var(--slate-500); font-weight: 600;">LÍMITE MÁXIMO</span>
-                <p style="font-size: 1.5rem; font-weight: 700; color: var(--slate-800);">3</p>
+              <div class="kpi-card">
+                <span class="kpi-label">LÍMITE MÁXIMO</span>
+                <div class="kpi-value">3</div>
+                <span class="kpi-subtext">Faltas permitidas</span>
               </div>
             </div>
 
             <p style="font-size: 0.85rem; color: var(--emerald); font-weight: 600;">
-              ✅ Tu cuenta está 100% habilitada para reservar comidas.
+              Tu cuenta se encuentra habilitada para reservar comidas.
             </p>
           </div>
 
           <div class="card">
             <h2 class="card-title">Ficha del Estudiante</h2>
-            <p class="card-desc">Datos registrados en el sistema universitario.</p>
+            <p class="card-desc">Información sincronizada con el sistema académico UNAB.</p>
             <table class="table">
               <tr><td><strong>Nombre:</strong></td><td id="fichaNombre">--</td></tr>
               <tr><td><strong>Código:</strong></td><td id="fichaCodigo">--</td></tr>
               <tr><td><strong>DNI:</strong></td><td id="fichaDni">--</td></tr>
               <tr><td><strong>Sede Comedor:</strong></td><td id="fichaSede">LA FLORIDA</td></tr>
-              <tr><td><strong>Condición:</strong></td><td>LIBRE (Sin Beca)</td></tr>
+              <tr><td><strong>Condición:</strong></td><td>LIBRE</td></tr>
             </table>
           </div>
         </div>
@@ -451,12 +462,12 @@
     </div>
   </div>
 
-  <!-- MODAL: AGREGAR ALUMNO (SUPERADMIN) -->
+  <!-- MODAL: REGISTRAR ALUMNO MANUAL (SUPERADMIN) -->
   <div class="modal-overlay" id="modalAddUser">
     <div class="modal-card">
       <div class="modal-header">
-        <h3>Agregar Alumno a la Base de Datos</h3>
-        <button style="background: none; border: none; color: #fff; font-size: 1.25rem; cursor: pointer;" onclick="closeModal('modalAddUser')">✕</button>
+        <h3>Registrar Alumno Manualmente</h3>
+        <button type="button" class="modal-close-btn" onclick="closeModal('modalAddUser')">&times;</button>
       </div>
       <form id="formAddUser" style="padding: 1.25rem;">
         <div class="form-group">
@@ -476,7 +487,7 @@
           <input type="text" class="form-control" id="addDni" placeholder="8 dígitos" required>
         </div>
         <div class="form-group">
-          <label class="form-label">Comida para Auto-Sniper</label>
+          <label class="form-label">Comida por Defecto</label>
           <select class="form-control" id="addTargetMeal">
             <option value="ALMUERZO" selected>ALMUERZO</option>
             <option value="CENA">CENA</option>
@@ -491,46 +502,46 @@
     </div>
   </div>
 
-  <!-- MODAL: PASE DIGITAL QR A PANTALLA COMPLETA (RESPONSIVE) -->
+  <!-- MODAL: PASE DIGITAL QR A PANTALLA COMPLETA -->
   <div class="modal-overlay" id="modalDigitalPass">
     <div class="modal-card" style="text-align: center;">
       <div class="modal-header">
-        <h3>Pase de Comedor Universitario</h3>
-        <button style="background: none; border: none; color: #fff; font-size: 1.25rem; cursor: pointer;" onclick="closeModal('modalDigitalPass')">✕</button>
+        <h3>Pase Digital de Comedor</h3>
+        <button type="button" class="modal-close-btn" onclick="closeModal('modalDigitalPass')">&times;</button>
       </div>
       <div class="modal-body">
         <h4 style="color: var(--navy-primary); font-size: 1.1rem; margin-bottom: 0.25rem;" id="passStudentName">SERNA SIMEON, ANGELO</h4>
         <p style="font-size: 0.85rem; color: var(--slate-600); margin-bottom: 1rem;">DNI: <span id="passStudentDni">76448557</span></p>
 
-        <!-- High contrast QR Frame (Image 3) -->
-        <div style="padding: 10px; background: #ffffff; border: 2px solid var(--navy-primary); border-radius: 8px; margin-bottom: 1rem;">
-          <div id="modalPassQrHolder" style="width: 190px; height: 190px; display: flex; align-items: center; justify-content: center; margin: 0 auto;"></div>
+        <!-- QR Frame -->
+        <div class="qr-canvas-frame">
+          <div id="modalPassQrHolder" class="qr-holder-inner"></div>
         </div>
 
-        <div style="width: 100%; border-top: 1px dashed var(--border-strong); padding-top: 0.75rem; font-size: 0.85rem; text-align: left;">
-          <div style="display: flex; justify-content: space-between; margin-bottom: 0.35rem;">
-            <span style="color: var(--slate-500);">Comida:</span>
-            <strong id="passMealType" style="color: var(--navy-primary);">ALMUERZO</strong>
+        <div class="pass-details-table">
+          <div class="pass-row">
+            <span>Comida:</span>
+            <strong id="passMealType">ALMUERZO</strong>
           </div>
-          <div style="display: flex; justify-content: space-between; margin-bottom: 0.35rem;">
-            <span style="color: var(--slate-500);">Fecha:</span>
+          <div class="pass-row">
+            <span>Fecha:</span>
             <span id="passMealDate">--</span>
           </div>
-          <div style="display: flex; justify-content: space-between;">
-            <span style="color: var(--slate-500);">Sede:</span>
+          <div class="pass-row">
+            <span>Sede:</span>
             <span>LA FLORIDA</span>
           </div>
         </div>
 
         <div style="display: flex; gap: 0.5rem; width: 100%; margin-top: 1.25rem;">
-          <button class="btn btn-secondary" style="flex: 1;" onclick="window.print()">🖨️ Imprimir</button>
+          <button class="btn btn-secondary" style="flex: 1;" onclick="window.print()">Imprimir</button>
           <button class="btn btn-primary" style="flex: 1;" onclick="closeModal('modalDigitalPass')">Cerrar</button>
         </div>
       </div>
     </div>
   </div>
 
-  <!-- Toast Shelf (White Minimalist) -->
+  <!-- Toast Shelf -->
   <div class="toast-shelf" id="toastShelf"></div>
 
   <script src="/app.js"></script>

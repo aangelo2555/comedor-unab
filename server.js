@@ -160,6 +160,46 @@ async function authenticateUserWithUnab(userRecord) {
   }
 }
 
+// Direct Authentication & Profile Sync against UNAB for Auto-Registration
+async function authenticateStudentDirect(username, password) {
+  try {
+    const res = await fetch('https://api-login-dev.unab.edu.pe/auth/login', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer',
+        'Origin': 'https://login-dev.unab.edu.pe',
+        'Referer': 'https://login-dev.unab.edu.pe/'
+      },
+      body: JSON.stringify({ UserName: username, userspassunab: password })
+    });
+
+    const data = await res.json();
+    if (!res.ok || !data.accessToken) {
+      return { success: false, error: data.message || data.error || 'Credenciales no válidas en UNAB' };
+    }
+
+    const token = data.accessToken;
+    let profile = { name: username, dni: '', campus: 'LA_FLORIDA' };
+
+    try {
+      const profileRes = await fetchComedorApi('/auth/me', token);
+      if (profileRes.ok && profileRes.data?.data) {
+        const p = profileRes.data.data;
+        profile = {
+          name: p.nombre || p.name || username,
+          dni: p.dni || '',
+          campus: p.campus || 'LA_FLORIDA'
+        };
+      }
+    } catch (_) {}
+
+    return { success: true, token, profile };
+  } catch (err) {
+    return { success: false, error: err.message };
+  }
+}
+
 // Comedor API Proxy Helper
 async function fetchComedorApi(endpoint, token, options = {}) {
   const url = `https://comedor-api.unab.edu.pe/v1${endpoint.startsWith('/') ? endpoint : '/' + endpoint}`;
@@ -253,14 +293,14 @@ function tickRailwayMasterScheduler() {
     // If it was automatically armed, disarm it
     if (globalSniper.status === 'ARMED' && globalSniper.isAutoScheduled) {
       stopGlobalSniper(true);
-      emitLog(`ℹ️ Francotirador desarmado: 0 reservas anticipadas para ${next.meal} del ${next.date}.`, 'info');
+      emitLog(`[AUTOPILOT] Francotirador desarmado: 0 reservas anticipadas para ${next.meal} del ${next.date}.`, 'info');
     }
 
     const nowMs = Date.now();
     if (inArmingWindow && msUntil <= 3 * 60 * 1000 && (nowMs - lastSchedulerLogTime > 60000 || lastSchedulerEvaluatedMeal !== next.meal)) {
       lastSchedulerLogTime = nowMs;
       lastSchedulerEvaluatedMeal = next.meal;
-      emitLog(`ℹ️ [Railway 24/7] Próxima apertura de ${next.meal} (${next.time}): 0 reservas anticipadas. Francotirador en reposo (NO se activa).`, 'info');
+      emitLog(`[AUTOPILOT] Próxima apertura de ${next.meal} (${next.time}): 0 reservas anticipadas. Francotirador en reposo (inactivo).`, 'info');
     }
     return;
   }
@@ -273,7 +313,7 @@ function tickRailwayMasterScheduler() {
       globalSniper.targetDate === next.date;
 
     if (!isAlreadyArmed) {
-      emitLog(`🎯 [Railway 24/7] ¡${activeAdvance.length} reserva(s) anticipada(s) detectada(s)! Francotirador AUTOMÁTICO armado para ${next.meal} (${next.date} a las ${next.time}).`, 'success');
+      emitLog(`[FRANCOTIRADOR] ${activeAdvance.length} reserva(s) anticipada(s) detectada(s). Francotirador AUTOMÁTICO armado para ${next.meal} (${next.date} a las ${next.time}).`, 'success');
       startGlobalSniper({
         targetMeal: next.meal,
         targetDate: next.date,
@@ -329,7 +369,7 @@ function startGlobalSniper(options = {}) {
     if (globalSniper.targetDate === todayLima && mealConfig) {
       const isPastCutoff = (curH > mealConfig.cutoffH || (curH === mealConfig.cutoffH && curM >= mealConfig.cutoffM));
       if (!isPastCutoff) {
-        emitLog(`🕒 Horario actual dentro de la ventana de ${globalSniper.targetMeal}. Activando Centinela de captura inmediata...`, 'info');
+        emitLog(`[CENTINELA] Horario actual dentro de la ventana de ${globalSniper.targetMeal}. Activando Centinela de captura inmediata...`, 'info');
         startSentinelWatch({ targetMeal: globalSniper.targetMeal, targetDate: globalSniper.targetDate });
         return;
       }
@@ -339,14 +379,14 @@ function startGlobalSniper(options = {}) {
     msUntilTarget = targetTs - Date.now();
   }
 
-  emitLog(`🎯 Francotirador armado para ${globalSniper.targetMeal} del ${globalSniper.targetDate}. Hora programada: ${globalSniper.targetTime}.`, 'info');
+  emitLog(`[FRANCOTIRADOR] Francotirador armado para ${globalSniper.targetMeal} del ${globalSniper.targetDate}. Hora programada: ${globalSniper.targetTime}.`, 'info');
   broadcastSSE('sniper-status', { ...globalSniper, sentinelActive: !!sentinelIntervalId });
 
   // Pre-warmup 30s before target
   const warmupMs = Math.max(0, msUntilTarget - 30000);
   setTimeout(async () => {
     if (!globalSniper.running || globalSniper.status !== 'ARMED') return;
-    emitLog('🔥 Calentamiento de sesiones para alumnos activos...', 'info');
+    emitLog('[WARMUP] Calentamiento de sesiones para alumnos activos...', 'info');
     const users = db.getAllUsers(false).filter(u => u.active && u.autoSniper && u.role !== 'superadmin');
     for (const u of users) {
       await getValidUnabToken(u);
@@ -420,7 +460,7 @@ function checkAndManageSentinelQueue() {
   if (queue.length === 0) {
     if (sentinelIntervalId || globalSniper.status === 'SENTINEL') {
       stopSentinelWatch(true);
-      emitLog('✅ No quedan alumnos en cola de espera. Centinela apagado automáticamente.', 'info');
+      emitLog('[CENTINELA] No quedan alumnos en cola de espera. Centinela apagado automáticamente.', 'info');
       broadcastSSE('sentinel-queue-updated', { queue: [] });
       broadcastSSE('sniper-status', { ...globalSniper, sentinelActive: false });
     }
@@ -441,7 +481,7 @@ function startSentinelWatch(options = {}) {
 
   const initialQueue = getStudentsInSentinelQueue(globalSniper.targetDate, globalSniper.targetMeal);
   if (initialQueue.length === 0) {
-    emitLog(`ℹ️ Centinela no iniciado: No hay alumnos en cola de espera para ${globalSniper.targetMeal} del ${globalSniper.targetDate}.`, 'info');
+    emitLog(`[CENTINELA] Centinela no iniciado: No hay alumnos en cola de espera para ${globalSniper.targetMeal} del ${globalSniper.targetDate}.`, 'info');
     globalSniper.status = 'IDLE';
     globalSniper.running = false;
     broadcastSSE('sniper-status', { ...globalSniper, sentinelActive: false });
@@ -449,7 +489,7 @@ function startSentinelWatch(options = {}) {
     return;
   }
 
-  emitLog(`🛡️ CENTINELA ACTIVADO: Vigilando cupos liberados para ${initialQueue.length} alumno(s) en cola (${globalSniper.targetMeal} del ${globalSniper.targetDate})...`, 'warning');
+  emitLog(`[CENTINELA] Vigilando cupos liberados para ${initialQueue.length} alumno(s) en cola (${globalSniper.targetMeal} del ${globalSniper.targetDate})...`, 'warning');
   broadcastSSE('sniper-status', { ...globalSniper, sentinelActive: true });
   broadcastSSE('sentinel-queue-updated', { queue: initialQueue });
 
@@ -479,7 +519,7 @@ function startSentinelWatch(options = {}) {
     try {
       const currentQueue = getStudentsInSentinelQueue(globalSniper.targetDate, globalSniper.targetMeal);
       if (currentQueue.length === 0) {
-        emitLog('✅ Todos los alumnos en cola recibieron su ticket o se canceló la solicitud. Centinela apagado automáticamente.', 'success');
+        emitLog('[CENTINELA] Todos los alumnos en cola recibieron su ticket o se canceló la solicitud. Centinela apagado automáticamente.', 'success');
         stopSentinelWatch(true);
         globalSniper.status = 'FINISHED';
         globalSniper.running = false;
@@ -512,7 +552,7 @@ function startSentinelWatch(options = {}) {
 
         const disponibles = targetItem.disponibleLibre ?? (targetItem.cupoLibre - (targetItem.usadoLibre ?? 0));
         if (disponibles > 0) {
-          emitLog(`⚡ ¡¡CUPO LIBERADO DETECTADO (${disponibles} libre(s) en ${item.meal})!! Capturando para ${item.studentName}...`, 'warning');
+          emitLog(`[CENTINELA] Cupo liberado detectado (${disponibles} libre(s) en ${item.meal}). Capturando para ${item.studentName}...`, 'warning');
 
           const burstReqs = [1, 2].map(async () => {
             return await fetchComedorApi('/reservas', sToken, {
@@ -539,14 +579,14 @@ function startSentinelWatch(options = {}) {
             });
 
             db.markAdvanceReservationConfirmed(item.advanceId, ticket);
-            emitLog(`🎉 ¡¡TICKET LIBERADO CAPTURADO CON ÉXITO para ${item.studentName}!! (${item.meal} del ${globalSniper.targetDate})`, 'success');
+            emitLog(`[CENTINELA] Ticket liberado capturado con éxito para ${item.studentName} (${item.meal} del ${globalSniper.targetDate}).`, 'success');
             broadcastSSE('reservation-status-changed', { student: item.studentUsername, meal: item.meal, ticket });
 
             // Re-evaluate remaining queue
             const remainingQueue = getStudentsInSentinelQueue(globalSniper.targetDate, globalSniper.targetMeal);
             broadcastSSE('sentinel-queue-updated', { queue: remainingQueue });
             if (remainingQueue.length === 0) {
-              emitLog('🎉 Todos los alumnos en cola recibieron su ticket a través de Centinela. Centinela apagado automáticamente.', 'success');
+              emitLog('[CENTINELA] Todos los alumnos en cola recibieron su ticket. Centinela apagado automáticamente.', 'success');
               stopSentinelWatch(true);
               globalSniper.status = 'FINISHED';
               globalSniper.running = false;
@@ -608,7 +648,7 @@ async function executeMultiUserBurst() {
     return;
   }
 
-  emitLog(`🚀 ¡DISPARO INICIADO! Sondeando cupos para ${activeCandidates.length} alumno(s) con reserva anticipada [Modo: ${globalSniper.targetMeal}]...`, 'warning');
+  emitLog(`[DISPARO] Iniciado: Sondeando cupos para ${activeCandidates.length} alumno(s) con reserva anticipada [Modo: ${globalSniper.targetMeal}]...`, 'warning');
 
   let attempts = 0;
   const maxAttempts = 40;
@@ -635,7 +675,7 @@ async function executeMultiUserBurst() {
         clearInterval(sniperPollIntervalId);
         sniperPollIntervalId = null;
         menuFound = prog.data.data;
-        emitLog(`✅ ¡Programación detectada con ${menuFound.length} servicios para ${globalSniper.targetDate}! Procesando reservas...`, 'success');
+        emitLog(`[DISPARO] Programación detectada con ${menuFound.length} servicios para ${globalSniper.targetDate}. Procesando reservas...`, 'success');
 
         // Multi-Meal Intelligent Dispatch per Student
         const userPromises = activeCandidates.map(async (student) => {
@@ -704,7 +744,7 @@ async function executeMultiUserBurst() {
                 db.markAdvanceReservationConfirmed(matchAdv.id, ticket);
               }
 
-              emitLog(`🎉 ¡¡RESERVA CONFIRMADA para ${student.name}!! (${targetItem.tipoComida})`, 'success');
+              emitLog(`[DISPARO] Reserva confirmada para ${student.name} (${targetItem.tipoComida}).`, 'success');
               studentResults.push({ meal, success: true, ticket });
             } else {
               const msg = results[0]?.data?.message || 'Cupos no disponibles';
@@ -857,37 +897,58 @@ const server = http.createServer(async (req, res) => {
       return sendJson(400, { success: false, error: 'Usuario y contraseña requeridos.' });
     }
 
-    let user = db.findUserByUsername(username);
+    const cleanUsername = String(username).trim();
+    let user = db.findUserByUsername(cleanUsername);
 
-    // If student not found locally, attempt UNAB API authentication to auto-enroll
-    if (!user) {
-      const tempUser = { username, password };
-      const auth = await authenticateUserWithUnab(tempUser);
-      if (auth.success) {
-        user = db.addUser({
-          username,
-          password,
-          role: 'user',
-          name: username,
-          active: true,
-          autoSniper: true,
-          targetMeal: 'ALMUERZO'
-        });
-      } else {
-        return sendJson(401, { success: false, error: 'Credenciales inválidas en UNAB o sistema.' });
+    // 1. SuperAdmin Login
+    if (user && user.role === 'superadmin') {
+      if (user.password !== password) {
+        return sendJson(401, { success: false, error: 'Contraseña de administrador incorrecta.' });
       }
     } else {
-      if (user.password !== password) {
-        return sendJson(401, { success: false, error: 'Contraseña incorrecta.' });
+      // 2. Student Login: Validate & self-register via official UNAB API
+      const authResult = await authenticateStudentDirect(cleanUsername, password);
+      if (!authResult.success) {
+        // Fallback: If user already exists in DB and credentials match stored record
+        if (user && user.password === password) {
+          // Allow login using stored account
+        } else {
+          return sendJson(401, { success: false, error: authResult.error || 'Credenciales no válidas en UNAB.' });
+        }
+      } else {
+        // Successful verification from UNAB!
+        if (!user) {
+          // Auto-register student immediately in database
+          user = db.addUser({
+            username: cleanUsername,
+            password: password,
+            role: 'user',
+            name: authResult.profile.name || cleanUsername,
+            dni: authResult.profile.dni || '',
+            campus: authResult.profile.campus || 'LA_FLORIDA',
+            active: true,
+            autoSniper: true,
+            targetMeal: 'ALMUERZO',
+            unabToken: authResult.token
+          });
+          emitLog(`Nuevo estudiante auto-registrado con cuenta UNAB: ${user.name} (${cleanUsername}).`, 'info');
+        } else {
+          // Existing student: update token, password and profile data
+          db.updateUser(user.id, {
+            password: password,
+            unabToken: authResult.token,
+            name: authResult.profile.name || user.name,
+            dni: authResult.profile.dni || user.dni,
+            campus: authResult.profile.campus || user.campus,
+            lastLogin: new Date().toISOString()
+          });
+          user = db.findUserById(user.id);
+        }
       }
     }
 
     if (!user.active) {
       return sendJson(403, { success: false, error: 'Tu cuenta ha sido desactivada por el administrador.' });
-    }
-
-    if (user.role !== 'superadmin') {
-      authenticateUserWithUnab(user).catch(console.error);
     }
 
     // Create session token
@@ -1176,7 +1237,7 @@ const server = http.createServer(async (req, res) => {
                 estado: 'ACTIVA'
               });
               db.markAdvanceReservationConfirmed(advance.id, confirmedTicket);
-              emitLog(`🎉 ¡Reserva confirmada en ventanilla digital para ${user.name} (${meal} del ${date})!`, 'success');
+              emitLog(`[RESERVA] Reserva confirmada en ventanilla digital para ${user.name} (${meal} del ${date}).`, 'success');
             }
           }
         }
@@ -1265,7 +1326,11 @@ const server = http.createServer(async (req, res) => {
     const result = await fetchComedorApi(`/reservas/me?fecha=${fechaParam}`, token);
 
     if (result.ok && Array.isArray(result.data?.data)) {
-      result.data.data.forEach(t => db.recordReservation(t));
+      if (typeof db.recordReservations === 'function') {
+        db.recordReservations(result.data.data);
+      } else {
+        result.data.data.forEach(t => db.recordReservation(t));
+      }
     }
 
     return sendJson(result.status, result.data);
@@ -1291,7 +1356,7 @@ const server = http.createServer(async (req, res) => {
     });
 
     if (result.ok && result.data?.success) {
-      emitLog(`✅ Reserva confirmada para ${user.name}: ${result.data.message}`, 'success');
+      emitLog(`[RESERVA] Confirmada para ${user.name}: ${result.data.message}`, 'success');
       if (result.data.data) {
         db.recordReservation({
           ...result.data.data,
@@ -1302,7 +1367,7 @@ const server = http.createServer(async (req, res) => {
         });
       }
     } else {
-      emitLog(`❌ Fallo en reserva para ${user.name}: ${result.data?.message || result.error}`, 'error');
+      emitLog(`[ERROR] Fallo en reserva para ${user.name}: ${result.data?.message || result.error}`, 'error');
     }
 
     return sendJson(result.status, result.data);
@@ -1436,12 +1501,12 @@ const server = http.createServer(async (req, res) => {
 server.listen(PORT, '0.0.0.0', () => {
   const mem = process.memoryUsage();
   console.log(`\n======================================================`);
-  console.log(`🏛️  SISTEMA COMEDOR UNAB - SAAS & RESERVAS`);
+  console.log(`[SISTEMA] COMEDOR UNAB - SAAS & RESERVAS`);
   console.log(`======================================================`);
-  console.log(`📡 Servidor activo en puerto: ${PORT} (0.0.0.0)`);
-  console.log(`⚡ Consumo inicial de RAM: ${(mem.rss / 1024 / 1024).toFixed(2)} MB`);
-  console.log(`🕒 Hora Perú: ${getLimaTimeString()} (America/Lima)`);
-  console.log(`🚂 Listo para despliegue en Railway`);
+  console.log(`[HTTP] Servidor activo en puerto: ${PORT} (0.0.0.0)`);
+  console.log(`[MEM] Consumo inicial de RAM: ${(mem.rss / 1024 / 1024).toFixed(2)} MB`);
+  console.log(`[TIME] Hora Perú: ${getLimaTimeString()} (America/Lima)`);
+  console.log(`[DEPLOY] Listo para despliegue en Railway`);
   console.log(`======================================================\n`);
 
   // Start the 24/7 Master Railway Scheduler
