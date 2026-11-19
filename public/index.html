@@ -12,6 +12,11 @@
 
   <!-- VIEW 1: AUTHENTICATION SCREEN (LOGIN & AUTO-REGISTRO) -->
   <div id="view-login" class="login-view">
+    <div class="login-intro">
+      <span class="intro-brand">UNAB · Comedor universitario</span>
+      <h1>Tu próxima comida,<br>con un día de ventaja.</h1>
+      <p>Organiza tus reservas y lleva tu pase digital siempre contigo.</p>
+    </div>
     <div class="login-card">
       <div class="login-header">
         <img src="/assets/logo_unab.png" alt="UNAB" class="login-logo" onerror="this.style.display='none'">
@@ -91,6 +96,11 @@
 
     <!-- SECTION: SUPERADMIN PANEL -->
     <div id="panel-superadmin" style="display: none;">
+      <section class="portal-hero">
+        <p class="hero-eyebrow">Administración · Comedor UNAB</p>
+        <h2>Todo listo para<br>el próximo servicio.</h2>
+        <p>Gestiona estudiantes, supervisa la cola y consulta las reservas desde un solo lugar.</p>
+      </section>
       <nav class="tabs-header">
         <button class="tab-link active" data-target="admin-tab-sniper">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -139,7 +149,7 @@
           <div class="status-dashboard-header">
             <div>
               <span class="badge badge-neutral" id="adminSniperStatusBadge">SISTEMA AUTÓNOMO ACTIVO</span>
-              <h2 class="section-title">Disparador Autónomo de Reservas Anticipadas</h2>
+              <h2 class="section-title">Reservas en piloto automático</h2>
               <p class="section-desc">
                 El servidor ejecuta reservas automáticamente en el horario oficial de apertura (Desayuno 06:30, Almuerzo 11:00, Cena 17:00) únicamente cuando existan reservas anticipadas en cola. Si no hay reservas, permanece en reposo sin consumir recursos.
               </p>
@@ -344,6 +354,12 @@
 
     <!-- SECTION: STUDENT / USER PANEL -->
     <div id="panel-student" style="display: none;">
+      <section class="portal-hero">
+        <p class="hero-eyebrow">Tu comedor universitario</p>
+        <h2>Reserva hoy.<br>Disfruta mañana.</h2>
+        <p>Elige tu comida, organiza tu día y ten tu pase a mano.</p>
+        <button class="btn btn-primary" id="btnPremiumOffer">Conocer Premium</button>
+      </section>
       <nav class="tabs-header">
         <button class="tab-link active" data-target="student-tab-meals">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
@@ -459,6 +475,56 @@
           </div>
         </div>
       </div>
+    </div>
+  </div>
+
+  <section id="panel-premium" class="premium-portal" style="display:none;">
+    <div class="premium-hero">
+      <div><span class="premium-label">Comedor UNAB Premium</span>
+        <h2>Tu ciclo,<br>bien organizado.</h2>
+        <p id="premiumCycleSummary"></p>
+        <button class="btn btn-primary" id="btnPremiumSettings">Elegir mis servicios</button>
+      </div>
+      <aside class="premium-plan-card"><span>Tu selección recurrente</span><h3 id="premiumSelectedMeals">Elige tus comidas</h3>
+        <p>Las solicitudes se preparan cada día hasta el fin de tu ciclo.</p>
+        <p>La cancelación preventiva comienza con anticipación según la cantidad de tickets y comprueba que sigan activos en UNAB.</p>
+      </aside>
+    </div>
+    <h3 class="premium-requests-title">Mis solicitudes</h3>
+    <div id="premiumRequestsHolder" class="grid-3 premium-requests"></div>
+    <div class="premium-section-heading"><h3>Mis pases de hoy</h3><button class="btn btn-secondary" id="btnPremiumRefresh">Actualizar</button></div>
+    <p class="premium-help">El procesamiento tiene prioridad en nuestra cola. La confirmación depende de los cupos y la respuesta de UNAB.</p>
+    <div id="premiumTicketsHolder"></div>
+  </section>
+
+  <div class="modal-overlay" id="modalPremium" role="dialog" aria-modal="true" aria-labelledby="premiumModalTitle">
+    <div class="modal-card premium-modal">
+      <div class="modal-header"><h3 id="premiumModalTitle">Tu comedor en automático</h3><button class="modal-close-btn" type="button" aria-label="Cerrar" onclick="closeModal('modalPremium')">&times;</button></div>
+      <div class="modal-body">
+        <span class="premium-label">Premium</span><h2>Elige una vez.<br>Organiza todo el ciclo.</h2>
+        <p>Solicitudes anticipadas recurrentes para los servicios que elijas, prioridad en la cola y cancelación preventiva de tickets que sigan activos antes del cierre.</p>
+        <p id="premiumAccessMessage" role="status"></p>
+        <form id="formPremiumMeals">
+          <fieldset class="premium-meal-options"><legend>¿Qué servicios quieres programar?</legend>
+            <label><input type="checkbox" name="meal" value="DESAYUNO"><span>Desayuno<small>Comienza tu día</small></span></label>
+            <label><input type="checkbox" name="meal" value="ALMUERZO"><span>Almuerzo<small>Tu pausa del mediodía</small></span></label>
+            <label><input type="checkbox" name="meal" value="CENA"><span>Cena<small>Termina bien tu jornada</small></span></label>
+          </fieldset>
+          <p class="premium-help">Puedes cambiar la selección o quitar todos los servicios para detener las solicitudes futuras. Los tickets ya confirmados se gestionan desde tus pases. La cancelación remota debe confirmarse antes del cierre.</p>
+          <button class="btn btn-primary btn-block" id="btnSavePremium" type="submit">Guardar mis servicios</button>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal-overlay" id="modalAdminPremium" role="dialog" aria-modal="true" aria-labelledby="adminPremiumTitle">
+    <div class="modal-card"><div class="modal-header"><h3 id="adminPremiumTitle">Configurar Premium</h3><button class="modal-close-btn" type="button" aria-label="Cerrar" onclick="closeModal('modalAdminPremium')">&times;</button></div>
+      <form id="formAdminPremium" class="modal-body">
+        <p id="adminPremiumStudent"></p>
+        <label class="premium-enable"><input id="adminPremiumEnabled" type="checkbox"> Habilitar servicio premium</label>
+        <div class="form-group"><label class="form-label" for="adminPremiumEndDate">Último día del ciclo</label><input class="form-control" id="adminPremiumEndDate" type="date"></div>
+        <button class="btn btn-primary btn-block" type="submit">Guardar configuración</button>
+      </form>
     </div>
   </div>
 

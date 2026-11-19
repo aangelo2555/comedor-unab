@@ -5,6 +5,8 @@
    -------------------------------------------------------------------------- */
 
 let currentAuth = null;
+let premiumActive = false;
+let modalPreviousFocus = null;
 let serverOffset = 0;
 let studentTickets = [];
 let adminUsersList = [];
@@ -46,12 +48,19 @@ function showToast(message, type = 'info') {
 // Modal Helpers
 function openModal(id) {
   const el = document.getElementById(id);
-  if (el) el.classList.add('active');
+  if (el) {
+    modalPreviousFocus = document.activeElement;
+    el.classList.add('active');
+    requestAnimationFrame(() => el.querySelector('button, input, select')?.focus());
+  }
 }
 
 function closeModal(id) {
   const el = document.getElementById(id);
-  if (el) el.classList.remove('active');
+  if (el) {
+    el.classList.remove('active');
+    modalPreviousFocus?.focus();
+  }
 }
 
 // Auth Headers Generator
@@ -144,6 +153,11 @@ async function checkAuthSession() {
 }
 
 function showLoginView() {
+  currentAuth = null;
+  premiumActive = false;
+  document.body.classList.remove('premium-session');
+  document.getElementById('panel-premium').style.display = 'none';
+  document.querySelectorAll('.modal-overlay.active').forEach(modal => modal.classList.remove('active'));
   document.getElementById('view-login').style.display = 'flex';
   document.getElementById('view-app').style.display = 'none';
 }
@@ -155,6 +169,8 @@ function showAppView(user) {
   document.getElementById('topUserName').textContent = user.name || user.username;
   const roleBadge = document.getElementById('userRoleBadge');
 
+  document.getElementById('panel-premium').style.display = 'none';
+  document.body.classList.remove('premium-session');
   if (user.role === 'superadmin') {
     roleBadge.textContent = 'SuperAdmin';
     roleBadge.className = 'status-pill admin';
@@ -169,6 +185,7 @@ function showAppView(user) {
     document.getElementById('panel-student').style.display = 'block';
     document.getElementById('ramPill').style.display = 'none';
     initStudentPanel(user);
+    loadPremiumState(true);
   }
 }
 
@@ -304,6 +321,7 @@ function renderAdminUsersTable(users) {
       </td>
       <td>
         ${u.role !== 'superadmin' ? `
+          <button class="btn btn-secondary btn-sm" onclick="configureUserPremium('${u.id}')">${u.premium?.enabled ? 'Editar Premium' : 'Habilitar Premium'}</button>
           <button class="btn btn-danger btn-sm" onclick="deleteUserPrompt('${u.id}', '${u.username}')">Eliminar</button>
         ` : '<span class="badge badge-neutral">SuperAdmin</span>'}
       </td>
@@ -502,12 +520,12 @@ async function loadSentinelQueue() {
         const tr = document.createElement('tr');
         const timeStr = item.createdAt ? new Date(item.createdAt).toLocaleTimeString('es-PE', { timeZone: 'America/Lima' }) : '--:--';
         const statusBadgeClass = item.isSentinel ? 'badge-warning' : 'badge-neutral';
-        const statusText = item.statusText || (item.isSentinel ? 'En Cola Centinela (Liberados)' : 'Reserva Anticipada');
+        const statusText = item.authPending ? 'Autenticación UNAB pendiente' : item.statusText || (item.isSentinel ? 'En Cola Centinela (Liberados)' : 'Reserva Anticipada');
 
         tr.innerHTML = `
           <td><strong>${item.studentName}</strong><div style="font-size: 0.74rem; color: var(--slate-500); font-family: var(--font-mono);">${item.studentUsername}</div></td>
           <td>${item.studentDni || '-'}</td>
-          <td><span class="badge badge-neutral">${item.meal}</span></td>
+          <td><span class="badge badge-neutral">${item.meal}</span>${item.premium ? '<span class="badge badge-success">Premium</span>' : ''}</td>
           <td>${item.date}</td>
           <td>${timeStr}</td>
           <td><span class="badge ${statusBadgeClass}">${statusText}</span></td>
@@ -704,27 +722,31 @@ document.getElementById('btnViewToday')?.addEventListener('click', () => {
   loadStudentMealCards(studentViewDate);
 });
 
+let mealCardsRequest = 0;
+
 // Render 3 Meal Cards
 async function loadStudentMealCards(targetDate) {
   const container = document.getElementById('studentMealCardsContainer');
   if (!container) return;
 
-  container.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; color: var(--slate-500); padding: 2rem;">Consultando disponibilidad para el ${targetDate}...</div>`;
+  const requestId = ++mealCardsRequest;
+  container.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; color: var(--slate-500); padding: 2rem;">Conectando con UNAB. Consultando disponibilidad para el ${targetDate}...</div>`;
 
   try {
-    const progPromise = fetch(`/api/comedor/programacion?date=${targetDate}`, { headers: authHeaders() })
-      .then(r => r.json())
-      .catch(() => ({ data: [] }));
-
-    const ticketPromise = fetch(`/api/comedor/reservas?fecha=${targetDate}`, { headers: authHeaders() })
-      .then(r => r.json())
-      .catch(() => ({ data: [] }));
-
-    const advancePromise = fetch(`/api/student/advance-reservations?fecha=${targetDate}`, { headers: authHeaders() })
-      .then(r => r.json())
-      .catch(() => ({ data: [] }));
-
-    const [progData, ticketData, advanceData] = await Promise.all([progPromise, ticketPromise, advancePromise]);
+    async function readAvailability(url) {
+      const response = await fetch(url, { headers: authHeaders() });
+      const data = await response.json();
+      if (!response.ok || !Array.isArray(data.data)) {
+        throw new Error(data.error || data.message || 'UNAB no pudo confirmar la disponibilidad. Vuelve a intentarlo.');
+      }
+      return data;
+    }
+    const [progData, ticketData, advanceData] = await Promise.all([
+      readAvailability(`/api/comedor/programacion?date=${targetDate}`),
+      readAvailability(`/api/comedor/reservas?fecha=${targetDate}`),
+      readAvailability(`/api/student/advance-reservations?fecha=${targetDate}`)
+    ]);
+    if (requestId !== mealCardsRequest) return;
 
     const progItems = Array.isArray(progData.data) ? progData.data : [];
     const confirmedTickets = Array.isArray(ticketData.data) ? ticketData.data.filter(t => t.estado === 'ACTIVA') : [];
@@ -877,7 +899,20 @@ async function loadStudentMealCards(targetDate) {
     });
 
   } catch (err) {
-    container.innerHTML = `<div style="grid-column: 1 / -1; color: var(--rose); padding: 1.5rem; text-align: center;">Error al cargar comidas: ${err.message}</div>`;
+    if (requestId !== mealCardsRequest) return;
+    container.replaceChildren();
+    const notice = document.createElement('div');
+    notice.className = 'card';
+    notice.style.gridColumn = '1 / -1';
+    notice.setAttribute('role', 'status');
+    const message = document.createElement('p');
+    message.textContent = `No se pudo consultar UNAB. ${err.message}`;
+    const retry = document.createElement('button');
+    retry.className = 'btn btn-primary';
+    retry.textContent = 'Volver a consultar';
+    retry.addEventListener('click', () => loadStudentMealCards(targetDate));
+    notice.append(message, retry);
+    container.append(notice);
   }
 }
 
@@ -942,7 +977,7 @@ async function loadStudentTickets() {
       container.innerHTML = `
         <div class="card" style="text-align: center; padding: 2.5rem;">
           <p style="color: var(--slate-800); font-weight: 600;">No tienes tickets confirmados para hoy.</p>
-          <p style="color: var(--slate-500); font-size: 0.84rem; margin-top: 0.25rem;">Puedes realizar tu reserva anticipada para mañana desde la pestaña "Reserva tu comida".</p>
+          <p style="color: var(--slate-500); font-size: 0.84rem; margin-top: 0.25rem;">${premiumActive ? 'Tus pases confirmados aparecerán aquí. Los servicios seleccionados se solicitarán automáticamente.' : 'Puedes realizar tu reserva anticipada para mañana desde la pestaña "Reserva tu comida".'}</p>
         </div>
       `;
       return;
@@ -1162,3 +1197,144 @@ document.addEventListener('DOMContentLoaded', () => {
   checkAuthSession();
   setupSSE();
 });
+
+let editingPremiumUserId = null;
+const premiumMealNames = { DESAYUNO: 'Desayuno', ALMUERZO: 'Almuerzo', CENA: 'Cena' };
+
+async function loadPremiumState(showOffer = false) {
+  if (!currentAuth || currentAuth.role === 'superadmin') return;
+  const userId = currentAuth.id;
+  try {
+    const response = await fetch('/api/student/premium', { headers: authHeaders() });
+    const data = await response.json();
+    if (currentAuth?.id !== userId) return;
+    if (!response.ok) throw new Error(data.error || 'No se pudo consultar Premium.');
+    premiumActive = data.active;
+    currentAuth.premium = data.premium;
+    document.body.classList.toggle('premium-session', premiumActive);
+    document.getElementById('panel-student').style.display = premiumActive ? 'none' : 'block';
+    document.getElementById('panel-premium').style.display = premiumActive ? 'block' : 'none';
+    const holder = document.getElementById('studentTicketsHolder');
+    const target = document.getElementById(premiumActive ? 'premiumTicketsHolder' : 'student-tab-tickets');
+    target.appendChild(holder);
+    document.getElementById('userRoleBadge').textContent = premiumActive ? 'Estudiante Premium' : 'Estudiante · Sede La Florida';
+    document.getElementById('premiumCycleSummary').textContent = premiumActive ? `Servicio habilitado hasta el ${data.premium.endDate}.` : '';
+    document.getElementById('premiumSelectedMeals').textContent = data.premium.meals.map(meal => premiumMealNames[meal]).join(' · ') || 'Elige tus comidas';
+    renderPremiumRequests(data.appointments || []);
+    updatePremiumModal();
+    if (showOffer && !premiumActive && !sessionStorage.getItem('premium_offer_' + currentAuth.id)) {
+      sessionStorage.setItem('premium_offer_' + currentAuth.id, 'seen');
+      openModal('modalPremium');
+    }
+  } catch (error) {
+    showToast(error.message, 'error');
+  }
+}
+
+function updatePremiumModal() {
+  const plan = currentAuth?.premium || { meals: [] };
+  document.getElementById('premiumAccessMessage').textContent = premiumActive
+    ? `Premium habilitado hasta el ${plan.endDate}. Guarda los servicios que quieres repetir cada día.`
+    : 'El administrador puede habilitar Premium y configurar la fecha de fin de tu ciclo.';
+  document.querySelectorAll('#formPremiumMeals input[name="meal"]').forEach(input => {
+    input.checked = plan.meals.includes(input.value);
+    input.disabled = !premiumActive;
+  });
+  document.getElementById('btnSavePremium').disabled = !premiumActive;
+}
+
+document.getElementById('btnPremiumOffer').addEventListener('click', () => { updatePremiumModal(); openModal('modalPremium'); });
+document.getElementById('btnPremiumSettings').addEventListener('click', () => { updatePremiumModal(); openModal('modalPremium'); });
+document.getElementById('btnPremiumRefresh').addEventListener('click', async () => { await loadPremiumState(); loadStudentTickets(); });
+document.getElementById('formPremiumMeals').addEventListener('submit', async event => {
+  event.preventDefault();
+  const button = document.getElementById('btnSavePremium');
+  button.disabled = true;
+  try {
+    const meals = Array.from(document.querySelectorAll('#formPremiumMeals input:checked')).map(input => input.value);
+    const response = await fetch('/api/student/premium', { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ meals }) });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'No se pudo guardar la selección.');
+    await loadPremiumState();
+    closeModal('modalPremium');
+    showToast('Servicios recurrentes guardados.', 'success');
+  } catch (error) { showToast(error.message, 'error'); }
+  finally { button.disabled = !premiumActive; }
+});
+
+function configureUserPremium(id) {
+  const user = adminUsersList.find(user => user.id === id);
+  if (!user) return;
+  editingPremiumUserId = id;
+  document.getElementById('adminPremiumStudent').textContent = user.name || user.username;
+  const enabled = document.getElementById('adminPremiumEnabled');
+  enabled.checked = Boolean(user.premium?.enabled);
+  const date = document.getElementById('adminPremiumEndDate');
+  date.value = user.premium?.endDate || '';
+  date.min = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
+  date.required = enabled.checked;
+  openModal('modalAdminPremium');
+}
+
+document.getElementById('adminPremiumEnabled').addEventListener('change', event => {
+  document.getElementById('adminPremiumEndDate').required = event.target.checked;
+});
+document.getElementById('formAdminPremium').addEventListener('submit', async event => {
+  event.preventDefault();
+  const button = event.target.querySelector('button[type="submit"]');
+  button.disabled = true;
+  try {
+    const response = await fetch('/api/admin/premium/' + encodeURIComponent(editingPremiumUserId), {
+      method: 'PUT', headers: authHeaders(),
+      body: JSON.stringify({ enabled: document.getElementById('adminPremiumEnabled').checked, endDate: document.getElementById('adminPremiumEndDate').value })
+    });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'No se pudo configurar Premium.');
+    closeModal('modalAdminPremium');
+    await loadAdminUsers();
+    showToast('Configuración premium guardada.', 'success');
+  } catch (error) { showToast(error.message, 'error'); }
+  finally { button.disabled = false; }
+});
+
+setInterval(() => { if (currentAuth?.role === 'user') loadPremiumState(); }, 60000);
+
+document.addEventListener('keydown', event => {
+  const dialog = document.querySelector('.modal-overlay.active[role="dialog"]');
+  if (!dialog) return;
+  if (event.key === 'Escape') closeModal(dialog.id);
+  if (event.key !== 'Tab') return;
+  const focusable = Array.from(dialog.querySelectorAll('button:not(:disabled), input:not(:disabled), [tabindex="0"]'));
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+  if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+});
+
+function renderPremiumRequests(appointments) {
+  const container = document.getElementById('premiumRequestsHolder');
+  container.replaceChildren();
+  const labels = { ACTIVA: 'En cola', CONFIRMADA: 'Confirmada', ANULADA: 'Anulada', PAUSADA: 'Pausada', CONSUMIDA: 'Consumida' };
+  for (const request of appointments) {
+    const card = document.createElement('article');
+    card.className = 'premium-request';
+    const heading = document.createElement('h4');
+    heading.textContent = premiumMealNames[request.meal] || request.meal;
+    const date = document.createElement('p');
+    date.textContent = request.date;
+    const state = document.createElement('strong');
+    state.textContent = request.authPending ? 'Esperando autenticación UNAB' : labels[request.status] || request.status;
+    card.append(heading, date, state);
+    if (request.status === 'ACTIVA') {
+      const cancel = document.createElement('button');
+      cancel.className = 'btn btn-secondary btn-sm';
+      cancel.textContent = 'Cancelar esta solicitud';
+      cancel.addEventListener('click', async () => {
+        await cancelAdvancePrompt(request.id, premiumMealNames[request.meal] || request.meal);
+        await loadPremiumState();
+      });
+      card.append(cancel);
+    }
+    container.append(card);
+  }
+}

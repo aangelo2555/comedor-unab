@@ -87,3 +87,30 @@ El navegador se abrirá automáticamente en:
 * **Consumo de RAM en reposo:** ~38 MB - 50 MB (ideal para el plan gratuito de Railway con 512 MB).
 * **Cero librerías pesadas:** Construido sobre las APIs nativas de Node.js (`http`, `fetch`, `crypto`).
 * **Estilo Visual:** Limpio, minimalista, paleta corporativa universitaria (blanco, gris pizarra, azul marino `#07406b`), **completamente libre de neón**.
+
+## Desarrollo y pruebas de concurrencia
+
+Ejecuta `node --test tests/*.test.js` desde la raíz del proyecto. Las pruebas simulan UNAB e incluyen 100 alumnos en los tres servicios durante dos fechas, saturación, autenticaciones fallidas, pérdida de respuestas, cancelación y conservación de solicitudes activas.
+
+El servidor comparte un presupuesto de peticiones para autenticación, consultas y reservas. Estos valores iniciales son configurables mediante variables de entorno.
+
+| Variable | Valor inicial | Función |
+| --- | --- | --- |
+| `UNAB_MAX_CONCURRENCY` | `2` | Máximo de peticiones simultáneas a UNAB por proceso |
+| `UNAB_REQUEST_INTERVAL_MS` | `500` | Separación mínima entre inicios de peticiones |
+
+Se respeta `Retry-After` ante saturación. Sin esa cabecera, los fallos temporales generan esperas crecientes. Una respuesta 403 pausa las peticiones durante un minuto. Las reservas consultan los tickets existentes antes de enviarse y después de una respuesta incierta.
+
+El control de concurrencia y la exclusión de reservas compartidas funcionan dentro de un proceso. El almacenamiento JSON actual y estos bloqueos requieren una sola instancia de `node server.js`. Varias réplicas requieren almacenamiento y coordinación compartidos. Los valores iniciales son una decisión local y deben ajustarse a los límites autorizados por UNAB.
+
+La simulación acelera la separación entre peticiones. Su duración mide la prueba local. La capacidad y los tiempos reales dependen de UNAB, y una respuesta perdida puede requerir reconciliación posterior.
+
+## Premium por ciclo
+
+En Gestión de Alumnos, el administrador puede habilitar Premium y fijar el último día del ciclo para cada estudiante. El estudiante selecciona sus comidas desde el panel Premium. La tarea de mantenimiento conserva solicitudes para hoy y mañana y las renueva diariamente hasta la fecha inclusiva del ciclo. Una cita anulada o pausada se conserva para evitar recrearla ese mismo día.
+
+La cola procesa primero a los alumnos Premium y mantiene el orden original de registro dentro de cada grupo. Un fallo de autenticación conserva la solicitud y registra un aviso periódico con el estado de UNAB.
+
+Antes del cierre se comprueba nuevamente el estado remoto del ticket. Solo los tickets que UNAB devuelve como `ACTIVA` son candidatos a anulación. Las operaciones de comprobación y cancelación tienen prioridad en el presupuesto de peticiones. El margen inicial es de 40 segundos, ampliado según la cantidad de tickets y el intervalo configurado. Con 100 tickets y el intervalo inicial, el proceso comienza cuatro minutos antes del cierre. La anulación requiere confirmación remota. Interrupciones de UNAB o una máquina detenida pueden impedir completarla a tiempo.
+
+Las preferencias y las solicitudes sobreviven al reinicio dentro de la base JSON. El proceso debe mantenerse ejecutándose para generar las solicitudes y cancelar tickets. El modal informa al alumno de la cancelación preventiva y permite quitar servicios futuros.

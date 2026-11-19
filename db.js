@@ -259,6 +259,7 @@ function updateUser(id, updateData) {
   if (updateData.targetMeal) u.targetMeal = updateData.targetMeal;
   if (updateData.unabToken !== undefined) u.unabToken = updateData.unabToken;
   if (updateData.lastLogin) u.lastLogin = updateData.lastLogin;
+  if (updateData.premium !== undefined) u.premium = updateData.premium;
 
   saveDb(db);
   const { password, unabToken, ...safeUser } = u;
@@ -289,8 +290,8 @@ function recordReservation(reserva) {
       ...reserva,
       recordedAt: new Date().toISOString()
     });
-    // Keep max 250 items in memory/disk
-    if (db.reservas.length > 250) db.reservas.pop();
+    // Retain active tickets even when recent history exceeds 250 entries.
+    if (db.reservas.length > 250) db.reservas = db.reservas.filter((item, index) => index < 250 || item.estado === 'ACTIVA');
     saveDb(db);
   } else {
     Object.assign(existing, reserva);
@@ -310,7 +311,7 @@ function recordReservations(reservas) {
         ...reserva,
         recordedAt: new Date().toISOString()
       });
-      if (db.reservas.length > 250) db.reservas.pop();
+      if (db.reservas.length > 250) db.reservas = db.reservas.filter((item, index) => index < 250 || item.estado === 'ACTIVA');
       changed = true;
     } else {
       Object.assign(existing, reserva);
@@ -364,6 +365,7 @@ function createAdvanceReservation(data) {
     fecha: data.fecha,
     campus: data.campus || 'LA_FLORIDA',
     status: 'ACTIVA', // ACTIVA, PAUSADA, CONFIRMADA, ANULADA
+    source: data.source || 'manual',
     programacionId: data.programacionId || null,
     qrToken: data.qrToken || null,
     ticketId: data.ticketId || null,
@@ -376,7 +378,10 @@ function createAdvanceReservation(data) {
     db.advanceReservations[existingIdx] = {
       ...db.advanceReservations[existingIdx],
       ...reservationObj,
-      id: db.advanceReservations[existingIdx].id
+      id: db.advanceReservations[existingIdx].id,
+      createdAt: db.advanceReservations[existingIdx].status === 'ACTIVA'
+        ? db.advanceReservations[existingIdx].createdAt
+        : reservationObj.createdAt
     };
     saveDb(db);
     addAuditLog(`Cita anticipada actualizada: ${data.tipoComida} para ${data.alumnoNombre} (${data.fecha}).`, 'info');
@@ -384,7 +389,7 @@ function createAdvanceReservation(data) {
   }
 
   db.advanceReservations.unshift(reservationObj);
-  if (db.advanceReservations.length > 300) db.advanceReservations.pop();
+  if (db.advanceReservations.length > 300) db.advanceReservations = db.advanceReservations.filter((item, index) => index < 300 || item.status === 'ACTIVA');
   saveDb(db);
   addAuditLog(`Cita anticipada registrada: ${data.tipoComida} para ${data.alumnoNombre} (${data.fecha}).`, 'info');
   return reservationObj;

@@ -10,6 +10,20 @@ const path = require('path');
 const crypto = require('crypto');
 
 const db = require('./db');
+const { MEALS, isPremium, compareQueue, validatePremium, createPremiumService } = require('./premium-service');
+const { RequestGate, retryDelay } = require('./upstream-control');
+const { createReservationService, mapWithConcurrency } = require('./reservation-service');
+
+function positiveInteger(value, fallback, maximum) {
+  const parsed = Number(value);
+  return Number.isInteger(parsed) && parsed > 0 && parsed <= maximum ? parsed : fallback;
+}
+const upstreamGate = new RequestGate({
+  concurrency: positiveInteger(process.env.UNAB_MAX_CONCURRENCY, 2, 10),
+  intervalMs: positiveInteger(process.env.UNAB_REQUEST_INTERVAL_MS, 500, 60000)
+});
+const reserveOnce = createReservationService(fetchComedorApi);
+const upstreamFailures = new Map();
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
@@ -31,6 +45,9 @@ setInterval(() => {
 }, 10 * 60 * 1000);
 
 // Global Sniper State (Keep timer IDs outside the object to prevent circular JSON serialization errors)
+let engineGeneration = 0;
+let sentinelGeneration = 0;
+let warmupTimerId = null;
 let sniperTimerId = null;
 let sniperPollIntervalId = null;
 let sentinelIntervalId = null;
@@ -121,10 +138,51 @@ function emitLog(message, type = 'info') {
   broadcastSSE('log', entry);
 }
 
+// Bound slow upstream responses, including their bodies. Retry only reads and login.
+async function fetchUnabResponse(url, options = {}, retryable = true) {
+  const attempts = retryable ? 2 : 1;
+  for (let attempt = 0; attempt < attempts; attempt++) {
+    try {
+      const response = await upstreamGate.run(async () => {
+        if (options.canProceed && !options.canProceed()) {
+          return { ok: false, status: 409, data: { message: 'Solicitud cancelada o fuera de horario.' } };
+        }
+        const { canProceed, priority, timeoutMs, ...fetchOptions } = options;
+        const res = await fetch(url, { ...fetchOptions, signal: AbortSignal.timeout(timeoutMs || 20000) });
+        const text = await res.text();
+        let data;
+        try { data = JSON.parse(text); } catch { data = text; }
+        if (res.status === 429 || res.status >= 500) {
+          const host = new URL(url).hostname;
+          const failures = upstreamFailures.get(host) || 0;
+          upstreamFailures.set(host, Math.min(failures + 1, 5));
+          upstreamGate.pause(retryDelay(res.headers.get('retry-after'), failures));
+        } else if (res.status === 403) {
+          upstreamGate.pause(60000);
+        } else if (res.ok) {
+          upstreamFailures.delete(new URL(url).hostname);
+        }
+        return { ok: res.ok, status: res.status, data };
+      }, options.priority || 0);
+      if (attempt + 1 < attempts && (response.status === 429 || response.status >= 500)) continue;
+      return response;
+    } catch (err) {
+      const host = new URL(url).hostname;
+      const failures = upstreamFailures.get(host) || 0;
+      upstreamFailures.set(host, Math.min(failures + 1, 5));
+      upstreamGate.pause(retryDelay(null, failures));
+      if (attempt + 1 === attempts) {
+        return { ok: false, status: 503, error: 'UNAB tarda en responder o no está disponible. Vuelve a intentarlo.', data: { error: 'UNAB tarda en responder o no está disponible. Vuelve a intentarlo.' } };
+      }
+    }
+  }
+}
+
 // Authentication Service for UNAB
-async function authenticateUserWithUnab(userRecord) {
+async function authenticateUserWithUnab(userRecord, requestOptions = {}) {
   try {
-    const res = await fetch('https://api-login-dev.unab.edu.pe/auth/login', {
+    const res = await fetchUnabResponse('https://api-login-dev.unab.edu.pe/auth/login', {
+      ...requestOptions,
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -135,9 +193,9 @@ async function authenticateUserWithUnab(userRecord) {
       body: JSON.stringify({ UserName: userRecord.username, userspassunab: userRecord.password })
     });
 
-    const data = await res.json();
+    const data = res.data;
     if (!res.ok || !data.accessToken) {
-      throw new Error(data.message || data.error || `HTTP ${res.status}`);
+      return { success: false, status: res.status, error: data?.message || data?.error || 'UNAB no devolvió una sesión válida.' };
     }
 
     db.updateUser(userRecord.id, {
@@ -145,16 +203,16 @@ async function authenticateUserWithUnab(userRecord) {
       lastLogin: new Date().toISOString()
     });
 
-    // Fetch and update profile details
-    const profileRes = await fetchComedorApi('/auth/me', data.accessToken);
-    if (profileRes.ok && profileRes.data?.data) {
-      const p = profileRes.data.data;
+    // Profile refresh must not delay a valid reservation session.
+    fetchComedorApi('/auth/me', data.accessToken).then(profileRes => {
+      if (!profileRes.ok || !profileRes.data?.data || !db.findUserById(userRecord.id)) return;
+      const profile = profileRes.data.data;
       db.updateUser(userRecord.id, {
-        name: p.nombre || userRecord.name,
-        dni: p.dni || userRecord.dni,
-        campus: p.campus || userRecord.campus
+        name: profile.nombre || userRecord.name,
+        dni: profile.dni || userRecord.dni,
+        campus: profile.campus || userRecord.campus
       });
-    }
+    }).catch(() => {});
 
     return { success: true, token: data.accessToken };
   } catch (err) {
@@ -165,7 +223,7 @@ async function authenticateUserWithUnab(userRecord) {
 // Direct Authentication & Profile Sync against UNAB for Auto-Registration
 async function authenticateStudentDirect(username, password) {
   try {
-    const res = await fetch('https://api-login-dev.unab.edu.pe/auth/login', {
+    const res = await fetchUnabResponse('https://api-login-dev.unab.edu.pe/auth/login', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -176,9 +234,9 @@ async function authenticateStudentDirect(username, password) {
       body: JSON.stringify({ UserName: username, userspassunab: password })
     });
 
-    const data = await res.json();
+    const data = res.data;
     if (!res.ok || !data.accessToken) {
-      return { success: false, error: data.message || data.error || 'Credenciales no válidas en UNAB' };
+      return { success: false, status: res.status, error: data?.message || data?.error || 'Credenciales no válidas en UNAB' };
     }
 
     const token = data.accessToken;
@@ -215,19 +273,12 @@ async function fetchComedorApi(endpoint, token, options = {}) {
     ...(options.headers || {})
   };
 
-  try {
-    const res = await fetch(url, { ...options, headers });
-    const text = await res.text();
-    let data;
-    try {
-      data = JSON.parse(text);
-    } catch {
-      data = text;
-    }
-    return { ok: res.ok, status: res.status, data };
-  } catch (err) {
-    return { ok: false, status: 500, error: err.message };
+  const result = await fetchUnabResponse(url, { ...options, headers }, !options.method || options.method === 'GET');
+  if (result.status === 401) {
+    const user = db.getAllUsers(false).find(user => user.unabToken === token);
+    if (user) db.updateUser(user.id, { unabToken: '' });
   }
+  return result;
 }
 
 function isJwtExpired(token) {
@@ -245,15 +296,42 @@ function isJwtExpired(token) {
 }
 
 // Helper: Ensure user has valid UNAB token (instant in-memory check during burst, verified during warmup)
-async function getValidUnabToken(userRecord, forceVerify = false) {
+const pendingUnabAuth = new Map();
+const authWarnings = new Map();
+async function getValidUnabToken(userRecord, forceVerify = false, requestOptions = {}) {
+  const key = userRecord.id;
+  if (pendingUnabAuth.has(key)) return pendingUnabAuth.get(key);
+  const pending = resolveUnabToken(userRecord, forceVerify, requestOptions);
+  pendingUnabAuth.set(key, pending);
+  try {
+    const token = await pending;
+    if (token) authWarnings.delete(key);
+    return token;
+  } finally { pendingUnabAuth.delete(key); }
+}
+
+async function resolveUnabToken(userRecord, forceVerify, requestOptions) {
+  userRecord = db.findUserById(userRecord.id) || userRecord;
   if (userRecord.unabToken && !isJwtExpired(userRecord.unabToken)) {
     if (!forceVerify) return userRecord.unabToken;
     const test = await fetchComedorApi('/alumnos/me/elegibilidad', userRecord.unabToken);
-    if (test.ok) return userRecord.unabToken;
+    if (test.ok || ![401, 403].includes(test.status)) return userRecord.unabToken;
   }
-  const auth = await authenticateUserWithUnab(userRecord);
-  if (auth.success) return auth.token;
+  const auth = await authenticateUserWithUnab(userRecord, requestOptions);
+  if (auth.success) { authWarnings.delete(userRecord.id); return auth.token; }
+  const last = authWarnings.get(userRecord.id) || 0;
+  if (Date.now() - last > 60000) {
+    authWarnings.set(userRecord.id, Date.now());
+    emitLog(`[AUTENTICACIÓN] ${userRecord.username} sigue pendiente porque UNAB no confirmó su sesión (${auth.status ? 'HTTP ' + auth.status : 'error de comunicación'}). Se conserva su posición original.`, 'warning');
+  }
   return null;
+}
+
+function canReserveService(user, meal, date) {
+  if (!isMealInServiceWindow(meal, date)) return false;
+  if (!isPremium(user, date)) return true;
+  const close = Date.parse(`${date}T${MEAL_CONFIGS[meal].horaFin}-05:00`);
+  return Date.now() < close - 40000;
 }
 
 // Check if current time in Lima is strictly within the official active service window for a meal today
@@ -321,6 +399,10 @@ function getNextMealOpening() {
 }
 
 function tickRailwayMasterScheduler() {
+  if (!globalSniper.running) {
+    const queue = getAllPendingAdvanceReservations().filter(item => item.isSentinel);
+    if (queue.length) startSentinelWatch({ targetMeal: queue[0].meal, targetDate: queue[0].date });
+  }
   // Guard: If Sentinel is running outside its active service window, stop it automatically!
   if (sentinelIntervalId || globalSniper.status === 'SENTINEL') {
     if (!isMealInServiceWindow(globalSniper.targetMeal, globalSniper.targetDate)) {
@@ -441,15 +523,21 @@ function startGlobalSniper(options = {}) {
   emitLog(`[FRANCOTIRADOR] Francotirador armado para ${globalSniper.targetMeal} del ${globalSniper.targetDate}. Hora programada: ${globalSniper.targetTime}.`, 'info');
   broadcastSSE('sniper-status', { ...globalSniper, sentinelActive: !!sentinelIntervalId });
 
-  // Pre-warmup 30s before target
-  const warmupMs = Math.max(0, msUntilTarget - 30000);
-  setTimeout(async () => {
-    if (!globalSniper.running || globalSniper.status !== 'ARMED') return;
-    emitLog('[WARMUP] Calentamiento de sesiones para alumnos activos...', 'info');
-    const users = db.getAllUsers(false).filter(u => u.active && u.autoSniper && u.role !== 'superadmin');
-    for (const u of users) {
-      await getValidUnabToken(u, true);
-    }
+  // Prepare only this date/meal queue, using bounded workers before opening.
+  const warmupGeneration = engineGeneration;
+  const warmupDate = globalSniper.targetDate;
+  const warmupMeal = globalSniper.targetMeal;
+  const warmupMs = Math.max(0, msUntilTarget - 4 * 60 * 1000);
+  warmupTimerId = setTimeout(async () => {
+    if (engineGeneration !== warmupGeneration || !globalSniper.running) return;
+    emitLog('[WARMUP] Preparando sesiones de la cola del servicio...', 'info');
+    const queue = db.getAdvanceReservations({ fecha: warmupDate, status: 'ACTIVA' })
+      .filter(item => ['TODAS', 'INTELIGENTE'].includes(warmupMeal) || item.tipoComida.toUpperCase() === warmupMeal);
+    const usernames = new Set(queue.map(item => item.alumnoCodigo));
+    const users = db.getAllUsers(false).filter(user => user.active && user.role !== 'superadmin' && usernames.has(user.username));
+    await mapWithConcurrency(users, 2, async user => {
+      if (engineGeneration === warmupGeneration && globalSniper.running) await getValidUnabToken(user, true);
+    });
   }, warmupMs);
 
   // Trigger burst at target - leadTimeMs
@@ -460,6 +548,10 @@ function startGlobalSniper(options = {}) {
 }
 
 function stopGlobalSniper(quiet = false) {
+  engineGeneration++;
+  sentinelGeneration++;
+  if (warmupTimerId) clearTimeout(warmupTimerId);
+  warmupTimerId = null;
   if (sniperTimerId) clearTimeout(sniperTimerId);
   if (sniperPollIntervalId) clearInterval(sniperPollIntervalId);
   if (sentinelIntervalId) clearInterval(sentinelIntervalId);
@@ -494,12 +586,12 @@ function getStudentsInSentinelQueue(filterDate = null, filterMeal = null) {
       continue;
     }
 
-    const student = allUsers.find(u => u.username === adv.alumnoCodigo || u.dni === adv.alumnoDni);
+    const student = allUsers.find(u => u.username === adv.alumnoCodigo || (adv.alumnoDni && u.dni === adv.alumnoDni));
     if (!student) continue;
 
     // Check if student already has a confirmed active ticket for this meal on targetDate
     const alreadyConfirmed = allRes.some(r => 
-      (r.alumnoCodigo === student.username || r.alumnoDni === student.dni) &&
+      (r.alumnoCodigo === student.username || (student.dni && r.alumnoDni === student.dni)) &&
       r.fecha === targetDate &&
       r.tipoComida.toUpperCase() === adv.tipoComida.toUpperCase() &&
       r.estado === 'ACTIVA'
@@ -514,7 +606,8 @@ function getStudentsInSentinelQueue(filterDate = null, filterMeal = null) {
         campus: student.campus,
         meal: adv.tipoComida.toUpperCase(),
         date: targetDate,
-        createdAt: adv.createdAt
+        createdAt: adv.createdAt,
+        premium: isPremium(student, targetDate)
       });
     } else {
       // Auto-heal: mark advance reservation as confirmed so it does not persist in ACTIVA
@@ -522,7 +615,7 @@ function getStudentsInSentinelQueue(filterDate = null, filterMeal = null) {
     }
   }
 
-  return queue;
+  return queue.sort(compareQueue);
 }
 
 // Consolidated Advance Reservations & Sentinel Queue for Admin View
@@ -533,9 +626,9 @@ function getAllPendingAdvanceReservations() {
 
   const list = [];
   for (const adv of allAdvance) {
-    const student = allUsers.find(u => u.username === adv.alumnoCodigo || u.dni === adv.alumnoDni);
+    const student = allUsers.find(u => u.username === adv.alumnoCodigo || (adv.alumnoDni && u.dni === adv.alumnoDni));
     const alreadyConfirmed = allRes.some(r => 
-      (r.alumnoCodigo === adv.alumnoCodigo || r.alumnoDni === adv.alumnoDni) &&
+      (r.alumnoCodigo === adv.alumnoCodigo || (adv.alumnoDni && r.alumnoDni === adv.alumnoDni)) &&
       r.fecha === adv.fecha &&
       r.tipoComida.toUpperCase() === adv.tipoComida.toUpperCase() &&
       r.estado === 'ACTIVA'
@@ -552,6 +645,8 @@ function getAllPendingAdvanceReservations() {
         meal: adv.tipoComida.toUpperCase(),
         date: adv.fecha,
         createdAt: adv.createdAt,
+        premium: isPremium(student, adv.fecha),
+        authPending: authWarnings.has(student?.id),
         isSentinel: inWindow,
         statusText: inWindow 
           ? 'En Cola Centinela (Buscando Liberados)' 
@@ -561,7 +656,7 @@ function getAllPendingAdvanceReservations() {
       db.markAdvanceReservationConfirmed(adv.id, { id: 'SYNCED', qrToken: '' });
     }
   }
-  return list;
+  return list.sort(compareQueue);
 }
 
 function checkAndManageSentinelQueue() {
@@ -584,6 +679,9 @@ function startSentinelWatch(options = {}) {
 
   const meal = (options.targetMeal || globalSniper.targetMeal || 'ALMUERZO').toUpperCase();
   const date = options.targetDate || globalSniper.targetDate || getTodayLimaDate(0);
+  const generation = sentinelGeneration;
+  const isCurrentRun = () => generation === sentinelGeneration && globalSniper.running &&
+    globalSniper.targetDate === date && globalSniper.targetMeal === meal;
 
   // USER RULE: Centinela ONLY activates when the opening time has passed and we are within the active service window!
   if (!isMealInServiceWindow(meal, date)) {
@@ -616,6 +714,7 @@ function startSentinelWatch(options = {}) {
 
   let probeIndex = 0;
   sentinelIntervalId = setInterval(async () => {
+    if (generation !== sentinelGeneration) return;
     if (!globalSniper.running || globalSniper.status !== 'SENTINEL') {
       stopSentinelWatch(true);
       return;
@@ -625,8 +724,8 @@ function startSentinelWatch(options = {}) {
     isSentinelRunningTick = true;
 
     // Auto-stop if meal service window has ended
-    if (!isMealInServiceWindow(globalSniper.targetMeal, globalSniper.targetDate)) {
-      emitLog(`[CENTINELA] Horario oficial de servicio de ${globalSniper.targetMeal} finalizó. Centinela apagado automáticamente.`, 'info');
+    if (!isMealInServiceWindow(meal, date)) {
+      emitLog(`[CENTINELA] Horario oficial de servicio de ${meal} finalizó. Centinela apagado automáticamente.`, 'info');
       stopSentinelWatch(true);
       globalSniper.status = 'IDLE';
       globalSniper.running = false;
@@ -636,7 +735,7 @@ function startSentinelWatch(options = {}) {
     }
 
     try {
-      const currentQueue = getStudentsInSentinelQueue(globalSniper.targetDate, globalSniper.targetMeal);
+      const currentQueue = getStudentsInSentinelQueue(date, meal);
       if (currentQueue.length === 0) {
         emitLog('[CENTINELA] Todos los alumnos en cola recibieron su ticket o se canceló la solicitud. Centinela apagado automáticamente.', 'success');
         stopSentinelWatch(true);
@@ -655,13 +754,13 @@ function startSentinelWatch(options = {}) {
       const probeToken = await getValidUnabToken(candidateStudent);
       if (!probeToken) return;
 
-      const prog = await fetchComedorApi(`/programacion/me?date=${globalSniper.targetDate}`, probeToken);
+      const prog = await fetchComedorApi(`/programacion/me?date=${date}`, probeToken);
       if (!prog.ok || !Array.isArray(prog.data?.data) || prog.data.data.length === 0) return;
 
       const menuFound = prog.data.data;
 
       for (const item of currentQueue) {
-        if (!globalSniper.running || globalSniper.status !== 'SENTINEL') break;
+        if (!isCurrentRun() || globalSniper.status !== 'SENTINEL') break;
 
         const studentUser = db.findUserByUsername(item.studentUsername);
         if (!studentUser) continue;
@@ -669,8 +768,8 @@ function startSentinelWatch(options = {}) {
         // Verify if student already has a confirmed ticket recorded
         const allRes = db.getAllReservations();
         const alreadyDone = allRes.some(r => 
-          (r.alumnoCodigo === item.studentUsername || r.alumnoDni === item.studentDni) &&
-          r.fecha === globalSniper.targetDate &&
+          (r.alumnoCodigo === item.studentUsername || (item.studentDni && r.alumnoDni === item.studentDni)) &&
+          r.fecha === date &&
           r.tipoComida.toUpperCase() === item.meal.toUpperCase() &&
           r.estado === 'ACTIVA'
         );
@@ -689,24 +788,19 @@ function startSentinelWatch(options = {}) {
         if (disponibles > 0) {
           emitLog(`[CENTINELA] Cupo liberado detectado (${disponibles} libre(s) en ${item.meal}). Capturando para ${item.studentName}...`, 'warning');
 
-          const burstReqs = [1, 2].map(async () => {
-            return await fetchComedorApi('/reservas', sToken, {
-              method: 'POST',
-              body: JSON.stringify({ programacionId: targetItem.id })
-            });
-          });
-
-          const results = await Promise.all(burstReqs);
-          const okRes = results.find(r => r.ok && r.data?.success);
-          if (okRes) {
-            const ticket = okRes.data.data;
+          const result = await reserveOnce(studentUser.id, sToken, targetItem.id, date, item.meal,
+            () => isCurrentRun() && canReserveService(studentUser, item.meal, date) &&
+              db.getAdvanceReservations({ alumnoCodigo: item.studentUsername, fecha: date, status: 'ACTIVA' })
+                .some(advance => advance.id === item.advanceId));
+          if (result.ok && result.data?.success) {
+            const ticket = result.data.data;
             db.recordReservation({
               id: ticket.id,
               alumnoCodigo: item.studentUsername,
               alumnoNombre: item.studentName,
               alumnoDni: item.studentDni,
               tipoComida: targetItem.tipoComida,
-              fecha: globalSniper.targetDate,
+              fecha: date,
               horaReserva: getLimaTimeString().slice(0, 8),
               qrToken: ticket.qrToken,
               estado: 'ACTIVA',
@@ -714,11 +808,12 @@ function startSentinelWatch(options = {}) {
             });
 
             db.markAdvanceReservationConfirmed(item.advanceId, ticket);
-            emitLog(`[CENTINELA] Ticket liberado capturado con éxito para ${item.studentName} (${item.meal} del ${globalSniper.targetDate}).`, 'success');
+            emitLog(`[CENTINELA] Ticket liberado capturado con éxito para ${item.studentName} (${item.meal} del ${date}).`, 'success');
             broadcastSSE('reservation-status-changed', { student: item.studentUsername, meal: item.meal, ticket });
 
+            if (!isCurrentRun()) return;
             // Re-evaluate remaining queue
-            const remainingQueue = getStudentsInSentinelQueue(globalSniper.targetDate, globalSniper.targetMeal);
+            const remainingQueue = getStudentsInSentinelQueue(date, meal);
             broadcastSSE('sentinel-queue-updated', { queue: remainingQueue });
             if (remainingQueue.length === 0) {
               emitLog('[CENTINELA] Todos los alumnos en cola recibieron su ticket. Centinela apagado automáticamente.', 'success');
@@ -729,51 +824,20 @@ function startSentinelWatch(options = {}) {
               return;
             }
           } else {
-            // Check if ticket was ALREADY booked on UNAB!
-            const msg = results[0]?.data?.message || results[1]?.data?.message || '';
-            const isAlreadyBooked = msg.toLowerCase().includes('ya tienes un ticket') || msg.toLowerCase().includes('ticket vigente');
-            if (isAlreadyBooked) {
-              emitLog(`[CENTINELA] ${item.studentName} ya cuenta con ticket vigente para ${item.meal}. Retirando de cola centinela.`, 'success');
-              db.markAdvanceReservationConfirmed(item.advanceId, { id: 'SYNCED', qrToken: '' });
-              try {
-                const checkMe = await fetchComedorApi(`/reservas/me?fecha=${globalSniper.targetDate}`, sToken);
-                if (checkMe.ok && Array.isArray(checkMe.data?.data)) {
-                  const found = checkMe.data.data.find(r => (r.tipoComida || '').toUpperCase() === item.meal.toUpperCase());
-                  if (found) {
-                    db.recordReservation({
-                      ...found,
-                      alumnoNombre: item.studentName,
-                      alumnoCodigo: item.studentUsername,
-                      alumnoDni: item.studentDni,
-                      estado: 'ACTIVA'
-                    });
-                  }
-                }
-              } catch (_) {}
-
-              const remainingQueue = getStudentsInSentinelQueue(globalSniper.targetDate, globalSniper.targetMeal);
-              broadcastSSE('sentinel-queue-updated', { queue: remainingQueue });
-              if (remainingQueue.length === 0) {
-                emitLog('[CENTINELA] Todos los alumnos en cola recibieron su ticket. Centinela apagado automáticamente.', 'success');
-                stopSentinelWatch(true);
-                globalSniper.status = 'FINISHED';
-                globalSniper.running = false;
-                broadcastSSE('sniper-status', { ...globalSniper, sentinelActive: false });
-                return;
-              }
-            }
+            emitLog(`[CENTINELA] Reserva pendiente para ${item.studentName}: ${result.data?.message || 'UNAB no confirmó el ticket.'}`, 'warning');
           }
         }
       }
     } catch (err) {
       console.error('Error en ciclo centinela:', err);
     } finally {
-      isSentinelRunningTick = false;
+      if (generation === sentinelGeneration) isSentinelRunningTick = false;
     }
-  }, 1500);
+  }, 3000);
 }
 
 function stopSentinelWatch(quiet = false) {
+  sentinelGeneration++;
   if (sentinelIntervalId) clearInterval(sentinelIntervalId);
   sentinelIntervalId = null;
   isSentinelRunningTick = false;
@@ -788,6 +852,11 @@ function stopSentinelWatch(quiet = false) {
 async function executeMultiUserBurst() {
   if (isSniperBurstRunning) return;
   if (!globalSniper.running && globalSniper.status === 'RESERVING') return;
+  const runDate = globalSniper.targetDate;
+  const runMeal = globalSniper.targetMeal;
+  const generation = engineGeneration;
+  const isCurrentRun = () => generation === engineGeneration && globalSniper.running &&
+    globalSniper.targetDate === runDate && globalSniper.targetMeal === runMeal;
   isSniperBurstRunning = true;
   globalSniper.status = 'RESERVING';
   broadcastSSE('sniper-status', { ...globalSniper });
@@ -795,14 +864,14 @@ async function executeMultiUserBurst() {
   // USER RULE:
   // "El francotirador debe ser automático en base si hay una reserva anticipada.
   // Pero si no hay una reserva anticipada, el francotirador no se va a activar."
-  const allAdvance = db.getAdvanceReservations({ fecha: globalSniper.targetDate, status: 'ACTIVA' });
+  const allAdvance = db.getAdvanceReservations({ fecha: runDate, status: 'ACTIVA' });
   let candidateAdvance = allAdvance;
-  if (globalSniper.targetMeal && !['TODAS', 'INTELIGENTE'].includes(globalSniper.targetMeal)) {
-    candidateAdvance = allAdvance.filter(a => a.tipoComida.toUpperCase() === globalSniper.targetMeal.toUpperCase());
+  if (runMeal && !['TODAS', 'INTELIGENTE'].includes(runMeal)) {
+    candidateAdvance = allAdvance.filter(a => a.tipoComida.toUpperCase() === runMeal.toUpperCase());
   }
 
   if (candidateAdvance.length === 0) {
-    emitLog(`ℹ️ Francotirador NO activado: No existen reservas anticipadas activas para ${globalSniper.targetMeal} del ${globalSniper.targetDate}.`, 'info');
+    emitLog(`ℹ️ Francotirador NO activado: No existen reservas anticipadas activas para ${runMeal} del ${runDate}.`, 'info');
     globalSniper.status = 'IDLE';
     globalSniper.running = false;
     isSniperBurstRunning = false;
@@ -810,10 +879,12 @@ async function executeMultiUserBurst() {
     return;
   }
 
+  candidateAdvance.sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
   const advanceUsernames = new Set(candidateAdvance.map(a => a.alumnoCodigo));
+  const queueOrder = [...advanceUsernames];
   const activeCandidates = db.getAllUsers(false).filter(u => 
     u.active && advanceUsernames.has(u.username) && u.role !== 'superadmin'
-  );
+  ).sort((a, b) => Number(isPremium(b, runDate)) - Number(isPremium(a, runDate)) || queueOrder.indexOf(a.username) - queueOrder.indexOf(b.username));
 
   if (activeCandidates.length === 0) {
     emitLog('No hay alumnos activos vinculados a las reservas anticipadas encontradas.', 'warning');
@@ -824,17 +895,17 @@ async function executeMultiUserBurst() {
     return;
   }
 
-  emitLog(`[DISPARO] Iniciado: Sondeando cupos para ${activeCandidates.length} alumno(s) con reserva anticipada [Modo: ${globalSniper.targetMeal}]...`, 'warning');
+  emitLog(`[DISPARO] Iniciado: Sondeando cupos para ${activeCandidates.length} alumno(s) con reserva anticipada [Modo: ${runMeal}]...`, 'warning');
 
   let attempts = 0;
-  const maxAttempts = 60; // Up to 15 seconds polling window
+  const maxAttempts = 20; // Bounded initial polling before sentinel recovery
   let burstDispatched = false;
   let isPolling = false;
 
-  const probeUser = activeCandidates[0];
-  const probeToken = await getValidUnabToken(probeUser);
+  let waitingForMealLogged = false;
 
   sniperPollIntervalId = setInterval(async () => {
+    if (generation !== engineGeneration) return;
     if (burstDispatched) {
       clearInterval(sniperPollIntervalId);
       sniperPollIntervalId = null;
@@ -851,9 +922,9 @@ async function executeMultiUserBurst() {
       isSniperBurstRunning = false;
       isPolling = false;
       if (globalSniper.status === 'RESERVING' && !burstDispatched) {
-        if (isMealInServiceWindow(globalSniper.targetMeal, globalSniper.targetDate)) {
+        if (isMealInServiceWindow(runMeal, runDate)) {
           emitLog('[DISPARO] Ráfaga inicial completada sin detectar publicación. Activando Centinela para capturar cupos liberados durante la ventana...', 'info');
-          startSentinelWatch({ targetMeal: globalSniper.targetMeal, targetDate: globalSniper.targetDate });
+          startSentinelWatch({ targetMeal: runMeal, targetDate: runDate });
         } else {
           stopGlobalSniper(true);
         }
@@ -862,8 +933,22 @@ async function executeMultiUserBurst() {
     }
 
     try {
-      const prog = await fetchComedorApi(`/programacion/me?date=${globalSniper.targetDate}`, probeToken);
+      // Rotate the probe so one unavailable account cannot block the whole queue.
+      const probeUser = activeCandidates[(attempts - 1) % activeCandidates.length];
+      const probeToken = await getValidUnabToken(probeUser);
+      if (!probeToken) return;
+      const prog = await fetchComedorApi(`/programacion/me?date=${runDate}`, probeToken);
+      if (!isCurrentRun()) return;
       if (prog.ok && Array.isArray(prog.data?.data) && prog.data.data.length > 0) {
+        const targetMeal = runMeal?.toUpperCase();
+        const needsSpecificMeal = targetMeal && !['TODAS', 'INTELIGENTE'].includes(targetMeal);
+        if (needsSpecificMeal && !prog.data.data.some(item => (item.tipoComida || '').toUpperCase() === targetMeal)) {
+          if (!waitingForMealLogged) {
+            emitLog(`[DISPARO] UNAB respondió, pero todavía no publicó ${targetMeal}. Las reservas siguen pendientes; se volverá a consultar.`, 'info');
+            waitingForMealLogged = true;
+          }
+          return;
+        }
         if (burstDispatched) {
           isPolling = false;
           return;
@@ -872,26 +957,27 @@ async function executeMultiUserBurst() {
         clearInterval(sniperPollIntervalId);
         sniperPollIntervalId = null;
         const menuFound = prog.data.data;
-        emitLog(`[DISPARO] Programación detectada con ${menuFound.length} servicios para ${globalSniper.targetDate}. Procesando reservas...`, 'success');
+        emitLog(`[DISPARO] Programación detectada con ${menuFound.length} servicios para ${runDate}. Procesando reservas...`, 'success');
 
         // Multi-Meal Intelligent Dispatch per Student
-        const userPromises = activeCandidates.map(async (student) => {
+        const finalResults = await mapWithConcurrency(activeCandidates, 2, async (student) => {
+          if (!isCurrentRun()) return { user: student.username, results: [{ success: false, message: 'Ejecución cancelada' }] };
           const sToken = await getValidUnabToken(student);
           if (!sToken) {
-            emitLog(`No se pudo autenticar a ${student.name} (${student.username})`, 'error');
-            return { user: student.username, success: false, error: 'Auth failed' };
+            emitLog(`[DISPARO] Autenticación UNAB pendiente para ${student.name} (${student.username}). La reserva seguirá en cola para reintentar.`, 'warning');
+            return { user: student.username, results: [{ success: false, message: 'Autenticación UNAB pendiente. Se volverá a intentar desde la cola.' }] };
           }
 
           // Fetch student's advance reservations for this target date
           const studentAdvance = db.getAdvanceReservations({
             alumnoCodigo: student.username,
-            fecha: globalSniper.targetDate,
+            fecha: runDate,
             status: 'ACTIVA'
           });
 
           let mealsToReserve = [];
-          if (globalSniper.targetMeal && !['TODAS', 'INTELIGENTE'].includes(globalSniper.targetMeal)) {
-            mealsToReserve = [globalSniper.targetMeal.toUpperCase()];
+          if (runMeal && !['TODAS', 'INTELIGENTE'].includes(runMeal)) {
+            mealsToReserve = [runMeal.toUpperCase()];
           } else if (studentAdvance.length > 0) {
             mealsToReserve = studentAdvance.map(a => a.tipoComida.toUpperCase());
           } else if (student.targetMeal && !['TODAS', 'INTELIGENTE'].includes(student.targetMeal)) {
@@ -910,25 +996,19 @@ async function executeMultiUserBurst() {
             }
 
             // Quick burst request
-            const burstReqs = [1, 2].map(async () => {
-              return await fetchComedorApi('/reservas', sToken, {
-                method: 'POST',
-                body: JSON.stringify({ programacionId: targetItem.id })
-              });
-            });
-
-            const results = await Promise.all(burstReqs);
-            const okRes = results.find(r => r.ok && r.data?.success);
-
-            if (okRes) {
-              const ticket = okRes.data.data;
+            const result = await reserveOnce(student.id, sToken, targetItem.id, runDate, meal,
+              () => isCurrentRun() && canReserveService(student, meal, runDate) &&
+                db.getAdvanceReservations({ alumnoCodigo: student.username, fecha: runDate, status: 'ACTIVA' })
+                  .some(item => item.tipoComida.toUpperCase() === meal));
+            if (result.ok && result.data?.success) {
+              const ticket = result.data.data;
               db.recordReservation({
                 id: ticket.id,
                 alumnoCodigo: student.username,
                 alumnoNombre: student.name,
                 alumnoDni: student.dni,
                 tipoComida: targetItem.tipoComida,
-                fecha: globalSniper.targetDate,
+                fecha: runDate,
                 horaReserva: getLimaTimeString().slice(0, 8),
                 qrToken: ticket.qrToken,
                 estado: 'ACTIVA',
@@ -944,52 +1024,24 @@ async function executeMultiUserBurst() {
               emitLog(`[DISPARO] Reserva confirmada para ${student.name} (${targetItem.tipoComida}).`, 'success');
               studentResults.push({ meal, success: true, ticket });
             } else {
-              const msg = results[0]?.data?.message || results[1]?.data?.message || 'Cupos no disponibles';
-              const isAlreadyBooked = msg.toLowerCase().includes('ya tienes un ticket') || msg.toLowerCase().includes('ticket vigente');
-              if (isAlreadyBooked) {
-                emitLog(`[DISPARO] ${student.name} ya contaba con ticket vigente para ${meal}. Confirmado con éxito.`, 'success');
-                const matchAdv = studentAdvance.find(a => a.tipoComida.toUpperCase() === meal.toUpperCase());
-                if (matchAdv) {
-                  db.markAdvanceReservationConfirmed(matchAdv.id, { id: 'SYNCED', qrToken: '' });
-                }
-                try {
-                  const checkMe = await fetchComedorApi(`/reservas/me?fecha=${globalSniper.targetDate}`, sToken);
-                  if (checkMe.ok && Array.isArray(checkMe.data?.data)) {
-                    const found = checkMe.data.data.find(r => (r.tipoComida || '').toUpperCase() === meal.toUpperCase());
-                    if (found) {
-                      db.recordReservation({
-                        ...found,
-                        alumnoNombre: student.name,
-                        alumnoCodigo: student.username,
-                        alumnoDni: student.dni,
-                        estado: 'ACTIVA'
-                      });
-                      if (matchAdv) {
-                        db.markAdvanceReservationConfirmed(matchAdv.id, found);
-                      }
-                    }
-                  }
-                } catch (_) {}
-                studentResults.push({ meal, success: true, alreadyHadTicket: true });
-              } else {
-                emitLog(`Resultado para ${student.name} (${meal}): ${msg}`, 'warning');
-                studentResults.push({ meal, success: false, message: msg });
-              }
+              const msg = result.data?.message || result.error || 'UNAB no confirmó la reserva; permanece pendiente';
+              emitLog(`Resultado para ${student.name} (${meal}): ${msg}`, 'warning');
+              studentResults.push({ meal, success: false, message: msg });
             }
           }
 
           return { user: student.username, results: studentResults };
         });
 
-        const finalResults = await Promise.all(userPromises);
+        if (!isCurrentRun()) return;
         globalSniper.lastRunResults = finalResults;
         broadcastSSE('reservation-batch-finished', finalResults);
 
         // Check if any student truly failed to get tickets; if so, keep Sentinel running
         const anyPending = finalResults.some(r => r.results?.some(res => !res.success));
         if (anyPending) {
-          emitLog('Algunos cupos estaban agotados. Centinela continuará activo vigilando cupos liberados...', 'warning');
-          startSentinelWatch({ targetMeal: globalSniper.targetMeal, targetDate: globalSniper.targetDate });
+          emitLog('Hay reservas pendientes de confirmar. Centinela volverá a consultar la sesión, disponibilidad y resultado de UNAB...', 'warning');
+          startSentinelWatch({ targetMeal: runMeal, targetDate: runDate });
         } else {
           globalSniper.status = 'FINISHED';
           globalSniper.running = false;
@@ -1000,11 +1052,11 @@ async function executeMultiUserBurst() {
       console.error('Error en sondeo de francotirador:', err);
     } finally {
       isPolling = false;
-      if (burstDispatched) {
+      if (burstDispatched && generation === engineGeneration) {
         isSniperBurstRunning = false;
       }
     }
-  }, 250);
+  }, 3000);
 }
 
 // Request Body Parser (safe and low memory)
@@ -1143,10 +1195,11 @@ const server = http.createServer(async (req, res) => {
         if (user && user.password === password) {
           // Allow login using stored account
         } else {
-          return sendJson(401, { success: false, error: authResult.error || 'Credenciales no válidas en UNAB.' });
+          return sendJson(authResult.status >= 500 || authResult.status === 429 ? 503 : 401, { success: false, error: authResult.error || 'Credenciales no válidas en UNAB.' });
         }
       } else {
-        // Successful verification from UNAB!
+        // Re-read after upstream authentication, another request may have registered this user.
+        user = db.findUserByUsername(cleanUsername);
         if (!user) {
           // Auto-register student immediately in database
           user = db.addUser({
@@ -1227,6 +1280,19 @@ const server = http.createServer(async (req, res) => {
       return sendJson(403, { error: 'Acceso denegado. Se requieren permisos de SuperAdmin.' });
     }
 
+    if (pathname.startsWith('/api/admin/premium/') && req.method === 'PUT') {
+      const userId = pathname.slice('/api/admin/premium/'.length);
+      const user = db.findUserById(userId);
+      if (!user || user.role === 'superadmin') return sendJson(404, { error: 'Estudiante no encontrado' });
+      try {
+        const plan = validatePremium(await parseJsonBody(req));
+        if (plan.enabled && user.premium?.meals) plan.meals = user.premium.meals;
+        db.updateUser(user.id, { premium: plan });
+        await premiumService.tick();
+        return sendJson(200, { success: true, premium: plan });
+      } catch (error) { return sendJson(400, { error: error.message }); }
+    }
+
     // GET /api/admin/users
     if (pathname === '/api/admin/users' && req.method === 'GET') {
       const users = db.getAllUsers(true);
@@ -1237,8 +1303,8 @@ const server = http.createServer(async (req, res) => {
 
       // Enhance each user with their consolidated reservations activity
       const enhancedUsers = users.map(u => {
-        const tomorrowRes = allReservations.filter(r => (r.alumnoCodigo === u.username || r.alumnoDni === u.dni) && r.fecha === tomorrowStr);
-        const tomorrowAdv = allAdvance.filter(r => (r.alumnoCodigo === u.username || r.alumnoDni === u.dni) && r.fecha === tomorrowStr);
+        const tomorrowRes = allReservations.filter(r => (r.alumnoCodigo === u.username || (u.dni && r.alumnoDni === u.dni)) && r.fecha === tomorrowStr);
+        const tomorrowAdv = allAdvance.filter(r => (r.alumnoCodigo === u.username || (u.dni && r.alumnoDni === u.dni)) && r.fecha === tomorrowStr);
 
         // Merge tomorrow reservations and advance appointments
         const mapManana = new Map();
@@ -1261,7 +1327,7 @@ const server = http.createServer(async (req, res) => {
           });
         });
 
-        const todayRes = allReservations.filter(r => (r.alumnoCodigo === u.username || r.alumnoDni === u.dni) && r.fecha === todayStr);
+        const todayRes = allReservations.filter(r => (r.alumnoCodigo === u.username || (u.dni && r.alumnoDni === u.dni)) && r.fecha === todayStr);
 
         return {
           ...u,
@@ -1289,6 +1355,7 @@ const server = http.createServer(async (req, res) => {
       const userId = pathname.replace('/api/admin/users/', '');
       const body = await parseJsonBody(req);
       try {
+        if (body.premium !== undefined) return sendJson(400, { error: 'Usa la configuración premium del alumno.' });
         const updated = db.updateUser(userId, body);
         return sendJson(200, { success: true, user: updated });
       } catch (e) {
@@ -1377,6 +1444,30 @@ const server = http.createServer(async (req, res) => {
 
   // --- STUDENT ADVANCE RESERVATION ROUTES ---
 
+  if (pathname === '/api/student/premium' && ['GET', 'PUT'].includes(req.method)) {
+    if (!session) return sendJson(401, { error: 'Autenticación requerida' });
+    const user = db.findUserById(session.userId);
+    if (!user || user.role === 'superadmin') return sendJson(403, { error: 'Acceso de estudiante requerido' });
+    if (req.method === 'PUT') {
+      if (!isPremium(user)) return sendJson(403, { error: 'El administrador debe habilitar tu servicio premium.' });
+      const body = await parseJsonBody(req);
+      if (!Array.isArray(body.meals) || body.meals.some(meal => !MEALS.includes(meal))) return sendJson(400, { error: 'Selecciona servicios válidos.' });
+      db.updateUser(user.id, { premium: { ...user.premium, meals: [...new Set(body.meals)] } });
+      await premiumService.tick();
+    }
+    const today = getTodayLimaDate(0);
+    const tomorrow = getTodayLimaDate(1);
+    const appointments = db.getAdvanceReservations({ alumnoCodigo: user.username })
+      .filter(item => item.fecha >= today && item.fecha <= tomorrow)
+      .map(item => {
+        const ticket = db.getAllReservations().find(ticket => ticket.alumnoCodigo === user.username &&
+          ticket.fecha === item.fecha && ticket.tipoComida === item.tipoComida);
+        return { id: item.id, meal: item.tipoComida, date: item.fecha, status: ticket?.estado || item.status,
+          authPending: item.status === 'ACTIVA' && authWarnings.has(user.id) };
+      });
+    return sendJson(200, { success: true, premium: user.premium || { enabled: false, meals: [], endDate: '' }, active: isPremium(user), appointments });
+  }
+
   // GET /api/student/advance-reservations?fecha=YYYY-MM-DD
   if (pathname === '/api/student/advance-reservations' && req.method === 'GET') {
     if (!session) return sendJson(401, { error: 'Autenticación requerida' });
@@ -1422,7 +1513,7 @@ const server = http.createServer(async (req, res) => {
 
     // Check if user already has an active confirmed ticket
     const existingTicket = db.getAllReservations().find(r => 
-      (r.alumnoCodigo === user.username || r.alumnoDni === user.dni) &&
+      (r.alumnoCodigo === user.username || (user.dni && r.alumnoDni === user.dni)) &&
       r.tipoComida === meal &&
       r.fecha === date &&
       r.estado === 'ACTIVA'
@@ -1455,10 +1546,10 @@ const server = http.createServer(async (req, res) => {
             const progItem = progRes.data.data.find(i => (i.tipoComida || '').toUpperCase() === meal);
             const disponibles = progItem ? (progItem.disponibleLibre ?? progItem.cupoLibre ?? 0) : 0;
             if (progItem && disponibles > 0) {
-              const bookRes = await fetchComedorApi('/reservas', token, {
-                method: 'POST',
-                body: JSON.stringify({ programacionId: progItem.id })
-              });
+              const bookRes = await reserveOnce(user.id, token, progItem.id, date, meal,
+                () => canReserveService(user, meal, date) &&
+                  db.getAdvanceReservations({ alumnoCodigo: user.username, fecha: date, status: 'ACTIVA' })
+                    .some(item => item.id === advance.id));
               if (bookRes.ok && bookRes.data?.success) {
                 confirmedTicket = bookRes.data.data;
                 db.recordReservation({
@@ -1483,7 +1574,7 @@ const server = http.createServer(async (req, res) => {
       // If tickets were exhausted (0 cupos) during active service window:
       // Activate Sentinel to catch freed/cancelled tickets!
       if (!confirmedTicket) {
-        emitLog(`[CENTINELA] Horario de ${meal} en curso. Cupos agotados. Activando Centinela para capturar cupos liberados...`, 'info');
+        emitLog(`[CENTINELA] Horario de ${meal} en curso. Reserva pendiente de confirmación. Activando Centinela para volver a consultar UNAB...`, 'info');
         startSentinelWatch({ targetMeal: meal, targetDate: date });
       }
     } else {
@@ -1541,6 +1632,7 @@ const server = http.createServer(async (req, res) => {
     if (session && session.userId) {
       const u = db.findUserById(session.userId);
       if (u) token = await getValidUnabToken(u);
+      if (!token) return sendJson(503, { error: 'No se pudo autenticar tu sesión en UNAB. Vuelve a consultar.' });
     }
 
     if (!token) {
@@ -1565,16 +1657,16 @@ const server = http.createServer(async (req, res) => {
     }
 
     const token = await getValidUnabToken(user);
-    if (!token) return sendJson(401, { error: 'Error de sesión en UNAB.' });
+    if (!token) return sendJson(503, { error: 'UNAB no pudo preparar la sesión. Vuelve a intentarlo.' });
 
     const fechaParam = searchParams.get('fecha') || getTodayLimaDate(0);
     const result = await fetchComedorApi(`/reservas/me?fecha=${fechaParam}`, token);
 
     if (result.ok && Array.isArray(result.data?.data)) {
       if (typeof db.recordReservations === 'function') {
-        db.recordReservations(result.data.data);
+        db.recordReservations(result.data.data.map(ticket => ({ ...ticket, alumnoCodigo: user.username, alumnoDni: user.dni, alumnoNombre: user.name })));
       } else {
-        result.data.data.forEach(t => db.recordReservation(t));
+        result.data.data.forEach(t => db.recordReservation({ ...t, alumnoCodigo: user.username, alumnoDni: user.dni, alumnoNombre: user.name }));
       }
     }
 
@@ -1595,10 +1687,13 @@ const server = http.createServer(async (req, res) => {
     if (!progId) return sendJson(400, { error: 'programacionId es obligatorio' });
 
     emitLog(`Intento de reserva manual para ${user.name} (ID: ${progId})...`, 'info');
-    const result = await fetchComedorApi('/reservas', token, {
-      method: 'POST',
-      body: JSON.stringify({ programacionId: progId })
-    });
+    const date = body.fecha || getTodayLimaDate(0);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return sendJson(400, { error: 'Fecha inválida' });
+    const programming = await fetchComedorApi(`/programacion/me?date=${date}`, token);
+    const item = programming.ok && Array.isArray(programming.data?.data) &&
+      programming.data.data.find(item => String(item.id) === String(progId));
+    if (!item?.tipoComida) return sendJson(503, { error: 'No se pudo verificar el servicio solicitado en UNAB.' });
+    const result = await reserveOnce(user.id, token, progId, date, item.tipoComida);
 
     if (result.ok && result.data?.success) {
       emitLog(`[RESERVA] Confirmada para ${user.name}: ${result.data.message}`, 'success');
@@ -1748,6 +1843,9 @@ const server = http.createServer(async (req, res) => {
   });
 });
 
+const premiumService = createPremiumService({ db, configs: MEAL_CONFIGS, getToken: user => getValidUnabToken(user, false, { priority: 10, timeoutMs: 5000 }), callApi: fetchComedorApi, log: emitLog, requestIntervalMs: upstreamGate.intervalMs });
+let premiumIntervalId = null;
+
 server.listen(PORT, '0.0.0.0', () => {
   const mem = process.memoryUsage();
   console.log(`\n======================================================`);
@@ -1758,6 +1856,9 @@ server.listen(PORT, '0.0.0.0', () => {
   console.log(`[TIME] Hora Perú: ${getLimaTimeString()} (America/Lima)`);
   console.log(`[DEPLOY] Listo para despliegue en Railway`);
   console.log(`======================================================\n`);
+
+  premiumIntervalId = setInterval(() => premiumService.tick().catch(error => console.error('Error en mantenimiento premium:', error)), 1000);
+  premiumService.tick().catch(error => console.error('Error al iniciar premium:', error));
 
   // Start the 24/7 Master Railway Scheduler
   masterSchedulerIntervalId = setInterval(tickRailwayMasterScheduler, 5000);
