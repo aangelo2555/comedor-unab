@@ -11,5 +11,8 @@
   },
   "author": "Angelo Thomas Serna Simeon",
   "license": "ISC",
-  "private": true
+  "private": true,
+  "dependencies": {
+    "pg": "8.16.3"
+  }
 }

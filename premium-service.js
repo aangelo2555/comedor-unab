@@ -47,10 +47,7 @@ function createPremiumService({
 
   function seed(user, today) {
     const plan = user.premium;
-    for (const date of [
-      today,
-      limaDate(Date.parse(today + 'T12:00:00-05:00') + 86400000)
-    ]) {
+    for (const date of [today]) {
       const existing = db.getAdvanceReservations({
         alumnoCodigo: user.username,
         fecha: date

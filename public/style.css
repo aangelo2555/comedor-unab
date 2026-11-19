@@ -1254,3 +1254,47 @@ body.premium-session .navbar, body.premium-session .brand-info h1, body.premium-
 .premium-request h4 { font-size: 20px; letter-spacing: -.03em; }
 .premium-request p { font-size: 13px; color: #52697d; margin: 8px 0; }
 .premium-request strong { display: block; margin-bottom: 12px; }
+
+/* Daily reservations and compact enrollment checkout. */
+[hidden] { display: none !important; }
+body.login-session { background: #f7fbff; }
+.login-view { padding: 0; min-height: 100dvh; }
+.login-card { width: 100%; max-width: none; min-height: 100dvh; border: 0; border-radius: 0; box-shadow: none; background: #f7fbff; display: flex; flex-direction: column; justify-content: center; padding: max(32px, env(safe-area-inset-top)) 24px max(32px, env(safe-area-inset-bottom)); }
+.login-card > * { width: 100%; max-width: 420px; margin-left: auto; margin-right: auto; }
+.login-logo { width: 145px; height: auto; max-height: 72px; object-fit: contain; margin-bottom: 22px; }
+.login-header h2 { font-size: 32px; }
+.login-card .form-control { font-size: 16px; }
+.login-notice { font-size: 14px; margin-bottom: 24px; }
+body:not(.admin-session) .navbar { flex-direction: row; flex-wrap: nowrap; align-items: center; justify-content: space-between; padding: 0 0 12px; gap: 16px; }
+body:not(.admin-session) .navbar .status-pill, body:not(.admin-session) .nav-username, body:not(.admin-session) .brand-info p { display: none !important; }
+body:not(.admin-session) .nav-actions { width: auto; flex-shrink: 0; }
+body:not(.admin-session) .brand-info h1 { font-size: 19px; letter-spacing: -.04em; white-space: nowrap; }
+body:not(.admin-session) .brand-logo { width: 30px; height: 34px; }
+#panel-student .portal-hero { padding: 18px 0 22px; }
+#panel-student .portal-hero h2 { font-size: clamp(30px, 4vw, 44px); margin: 8px 0; }
+#panel-student .hero-eyebrow, #panel-student .unab-main-title, #panel-student .unab-subtitle, #panel-student .unab-campus-banner { display: none; }
+#panel-student .portal-hero > p:last-of-type { font-size: 15px; }
+#btnPremiumOffer { margin-top: 14px; background: #ffffffa0; color: #142a3d; border-color: #ffffffa0; }
+#panel-student .tabs-header { margin-bottom: 18px; }
+#panel-student .tab-link { font-size: 13px; padding: 10px 13px; }
+#panel-student .unab-header-section { margin: 0 0 16px; }
+.premium-modal { max-width: 540px; max-height: calc(100dvh - 32px); }
+.premium-modal .modal-header { padding: 18px 24px; }
+.premium-modal .modal-header h3 { font-size: 16px; }
+.premium-modal .modal-body { padding: 22px 24px; }
+.premium-modal h2 { font-size: 30px; margin: 0 0 14px; }
+.premium-modal p { font-size: 15px; line-height: 1.5; margin-bottom: 14px; }
+.premium-meal-options { margin: 18px 0; }
+.premium-meal-options label { padding: 12px 16px; margin-bottom: 8px; min-height: 52px; }
+.premium-price { padding: 20px; border-radius: 18px; background: #eaf3fc; margin: 16px 0; }
+.premium-price span { display: block; font-size: 14px; }
+.premium-price strong { display: block; font-size: 42px; line-height: 1.2; letter-spacing: -.05em; }
+.premium-modal .yape-number { font-size: 30px; font-weight: 700; letter-spacing: -.04em; }
+#premiumPaymentStep .form-group { margin-top: 20px; }
+#premiumPaymentStatus { margin-top: 14px; }
+@media (max-width: 400px) {
+  body:not(.admin-session) .brand-info h1 { font-size: 17px; }
+  .premium-modal .modal-body { padding: 20px; }
+}
+
+#panel-student .tab-link { padding-left: 10px; padding-right: 10px; gap: 5px; }

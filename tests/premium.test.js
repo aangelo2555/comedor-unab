@@ -105,14 +105,18 @@ test('recurrence is idempotent, respects cancellations and stops at the cycle en
   const f = fixture();
   f.users[0].premium.meals = ['DESAYUNO', 'CENA'];
   await f.service.tick();
-  assert.equal(f.advances.length, 3);
+  assert.equal(f.advances.length, 1);
   f.advances[0].status = 'ANULADA';
   await f.service.tick();
-  assert.equal(f.advances.length, 3);
+  assert.equal(f.advances.length, 1);
   assert.equal(f.advances[0].status, 'ANULADA');
   f.setTime('2026-11-20T09:00:00-05:00');
   await f.service.tick();
   assert.ok(f.advances.every((item) => item.fecha <= '2026-11-20'));
+  assert.equal(
+    f.advances.filter((item) => item.fecha === '2026-11-20').length,
+    2
+  );
   f.setTime('2026-11-21T09:00:00-05:00');
   await f.service.tick();
   assert.equal(f.advances.filter((item) => item.status === 'ACTIVA').length, 0);
@@ -179,6 +183,9 @@ test('maintenance restores recurrence on restart and avoids cancellation after s
   });
   await f.service.tick();
   assert.equal(f.calls.length, 0);
+  assert.equal(f.advances.length, 0);
+  f.setTime('2026-11-20T09:00:00-05:00');
+  await f.service.tick();
   assert.equal(f.advances.length, 1);
   assert.equal(f.advances[0].fecha, '2026-11-20');
 });

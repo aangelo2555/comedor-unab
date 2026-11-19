@@ -127,11 +127,38 @@ if (process.env.PREMIUM_API_CHILD) {
         ).status,
         400
       );
+      const checkout = await fetch(base + '/api/student/premium/checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + student
+        },
+        body: JSON.stringify({
+          meals: ['CENA'],
+          reference: 'YAPE-TEST-123',
+          amount: 0
+        })
+      });
+      assert.equal(checkout.status, 200);
+      const order = (await checkout.json()).paymentRequest;
+      assert.equal(order.amount, 9);
+      assert.equal(order.yape, '923887478');
+      assert.equal(order.status, 'PENDING');
       assert.equal(
         (
           await put('/api/admin/premium/student', admin, {
             enabled: true,
             endDate: '2099-01-01'
+          })
+        ).status,
+        400
+      );
+      assert.equal(
+        (
+          await put('/api/admin/premium/student', admin, {
+            enabled: true,
+            endDate: '2099-01-01',
+            confirmPayment: true
           })
         ).status,
         200
@@ -161,7 +188,14 @@ if (process.env.PREMIUM_API_CHILD) {
       const planned = saved.advanceReservations.filter(
         (item) => item.alumnoCodigo === 'test-student'
       );
-      assert.ok(planned.length >= 2 && planned.length <= 4);
+      const today = new Date().toLocaleDateString('en-CA', {
+        timeZone: 'America/Lima'
+      });
+      assert.ok(planned.every((item) => item.fecha === today));
+      assert.deepEqual(
+        saved.users.find((user) => user.id === 'student').premium.meals,
+        ['DESAYUNO', 'CENA']
+      );
       assert.ok(planned.every((item) => item.source === 'premium'));
       assert.equal(
         (await put('/api/student/premium', student, { meals: [] })).status,
@@ -177,6 +211,14 @@ if (process.env.PREMIUM_API_CHILD) {
         (await put('/api/admin/premium/student', admin, { enabled: false }))
           .status,
         200
+      );
+      assert.equal(
+        (
+          await fetch(base + '/api/comedor/programacion?date=2099-01-01', {
+            headers: { Authorization: 'Bearer ' + student }
+          })
+        ).status,
+        400
       );
       const response = await fetch(base + '/api/student/premium', {
         headers: { Authorization: 'Bearer ' + student }

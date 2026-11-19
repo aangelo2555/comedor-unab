@@ -17,6 +17,7 @@ function createContext(fetch, signal = AbortSignal) {
     __dirname: path.resolve(__dirname, '..'),
     process: {
       ...process,
+      once() {},
       env: { ...process.env, UNAB_REQUEST_INTERVAL_MS: '1' }
     },
     console,

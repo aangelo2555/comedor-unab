@@ -75,6 +75,83 @@ const DEFAULT_DB = {
 };
 
 let cache = null;
+let postgres = null;
+let version = 0;
+let persistedVersion = 0;
+let writing = null;
+let scheduled = false;
+let persistenceFailure = null;
+
+async function initialize() {
+  const configured = Boolean(process.env.DATABASE_URL || process.env.PGHOST);
+  if (!configured) {
+    if (process.env.RAILWAY_ENVIRONMENT || process.env.NODE_ENV === 'production') {
+      throw new Error('Configura DATABASE_URL con el servicio PostgreSQL persistente antes de arrancar en producción.');
+    }
+    loadDb();
+    return;
+  }
+  let store;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    try {
+      store = await require('./postgres-store').openPostgres(() => {
+        console.error('[DB] Se perdió PostgreSQL. Reiniciando para recuperar el estado persistido.');
+        process.exit(1);
+      });
+      break;
+    } catch (error) {
+      if (attempt === 5 || !['ECONNREFUSED', 'ETIMEDOUT', 'ENOTFOUND', '57P03'].includes(error.code)) throw error;
+      await new Promise(resolve => setTimeout(resolve, Math.min(5000, 1000 * 2 ** attempt)));
+    }
+  }
+  try {
+    const existing = await store.read();
+    if (existing) {
+      cache = existing;
+      normalizeDb();
+    } else {
+      loadDb();
+    }
+    postgres = store;
+    if (!existing) saveDb(cache);
+    await flush();
+  } catch (error) {
+    await store.close();
+    throw error;
+  }
+}
+
+async function flush() {
+  if (!postgres) return;
+  if (persistenceFailure) throw persistenceFailure;
+  postgres.assertReady();
+  while (persistedVersion < version) {
+    if (writing) { await writing; continue; }
+    const snapshotVersion = version;
+    const snapshot = JSON.stringify(cache);
+    writing = postgres.write(snapshot).then(() => { persistedVersion = snapshotVersion; });
+    try { await writing; }
+    catch (error) {
+      if (error.code === 'STATE_CONFLICT') {
+        persistenceFailure = error;
+        console.error('[DB] Escritura concurrente detectada. Reiniciando para cargar el estado confirmado.');
+        setTimeout(() => process.exit(1), 100).unref();
+      }
+      throw error;
+    } finally { writing = null; }
+  }
+}
+
+async function health() { await flush(); if (postgres) await postgres.ping(); }
+
+async function close() {
+  await flush();
+  if (postgres) await postgres.close();
+}
+
+function getSessions() { return loadDb().sessions || []; }
+function saveSessions(sessions) { const data = loadDb(); data.sessions = sessions; saveDb(data); }
+
 
 function loadDb() {
   if (cache) return cache;
@@ -90,10 +167,13 @@ function loadDb() {
       saveDb(cache);
     }
   } catch (err) {
-    console.error('Error al leer base de datos, usando por defecto:', err);
-    cache = JSON.parse(JSON.stringify(DEFAULT_DB));
+    throw new Error('No se pudo leer la base local. Conserva el archivo y restaura un respaldo válido.');
   }
 
+  return normalizeDb();
+}
+
+function normalizeDb() {
   // Self-healing: Ensure arrays exist
   if (!Array.isArray(cache.users)) cache.users = [];
   if (!Array.isArray(cache.reservas)) cache.reservas = [];
@@ -121,75 +201,35 @@ function loadDb() {
     };
     cache.users.unshift(admin);
   } else {
-    // Keep username and password updated according to environment/request
-    admin.username = ADMIN_EMAIL;
-    admin.email = ADMIN_EMAIL;
-    admin.password = ADMIN_PASSWORD;
+    // Preserve migrated administrator credentials unless an environment override is explicit.
+    if (process.env.ADMIN_EMAIL) {
+      admin.username = ADMIN_EMAIL;
+      admin.email = ADMIN_EMAIL;
+    }
+    if (process.env.ADMIN_PASSWORD) admin.password = ADMIN_PASSWORD;
     admin.role = 'superadmin';
-  }
-
-  // Self-healing: Guarantee student Angelo account exists
-  let angelo = cache.users.find(u => u.username === '222.0113.028');
-  if (!angelo) {
-    cache.users.push({
-      id: 'usr-angelo',
-      username: '222.0113.028',
-      password: 'Dotamipasion12345',
-      role: 'user',
-      name: 'SERNA SIMEON, ANGELO THOMAS',
-      dni: '76448557',
-      campus: 'LA_FLORIDA',
-      active: true,
-      autoSniper: true,
-      targetMeal: 'ALMUERZO',
-      unabToken: '',
-      createdAt: new Date().toISOString()
-    });
   }
 
   return cache;
 }
 
 function saveDb(data = cache) {
-  try {
-    cache = data;
-    if (!fs.existsSync(DATA_DIR)) {
-      try { fs.mkdirSync(DATA_DIR, { recursive: true, mode: 0o777 }); } catch (_) {}
+  cache = data;
+  if (postgres) {
+    version++;
+    if (!scheduled) {
+      scheduled = true;
+      queueMicrotask(() => {
+        scheduled = false;
+        flush().catch(() => console.error('[DB] Escritura PostgreSQL pendiente. Las respuestas de escritura esperan confirmación.'));
+      });
     }
-    const randSuffix = Math.random().toString(36).substring(2, 8);
-    const tempFile = path.join(DATA_DIR, `database.json.tmp.${Date.now()}_${randSuffix}`);
-    fs.writeFileSync(tempFile, JSON.stringify(data, null, 2), 'utf8');
-    fs.renameSync(tempFile, DB_FILE);
-  } catch (err) {
-    console.error('Error guardando en base de datos:', err);
-
-    // Intentar reparar permisos si fue EACCES
-    if (err.code === 'EACCES') {
-      try { fs.chmodSync(DATA_DIR, 0o777); } catch (_) {}
-      try { if (fs.existsSync(DB_FILE)) fs.chmodSync(DB_FILE, 0o666); } catch (_) {}
-    }
-
-    // Fallback 1: Si el archivo temporal o rename falló, intentar escritura directa
-    try {
-      fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf8');
-      return;
-    } catch (fallbackErr) {
-      console.error('Error en fallback directo de guardado:', fallbackErr.message);
-    }
-
-    // Fallback 2: Si el directorio de datos tiene EACCES permanente en Railway/Linux, usar /tmp
-    if (err.code === 'EACCES' && DATA_DIR !== '/tmp' && process.platform !== 'win32') {
-      try {
-        console.warn(`[DB WARNING] Permisos denegados en ${DATA_DIR}. Cambiando a /tmp para evitar pérdida de datos.`);
-        DATA_DIR = '/tmp';
-        DB_FILE = path.join(DATA_DIR, 'database.json');
-        fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2), 'utf8');
-        console.log('[DB INFO] Base de datos guardada exitosamente en /tmp/database.json');
-      } catch (tmpErr) {
-        console.error('[DB FATAL] No se pudo guardar ni en data ni en /tmp:', tmpErr.message);
-      }
-    }
+    return;
   }
+  fs.mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 });
+  const tempFile = path.join(DATA_DIR, `database.json.tmp.${crypto.randomBytes(8).toString('hex')}`);
+  fs.writeFileSync(tempFile, JSON.stringify(data, null, 2), { encoding: 'utf8', mode: 0o600 });
+  fs.renameSync(tempFile, DB_FILE);
 }
 
 // User Helpers
@@ -260,6 +300,7 @@ function updateUser(id, updateData) {
   if (updateData.unabToken !== undefined) u.unabToken = updateData.unabToken;
   if (updateData.lastLogin) u.lastLogin = updateData.lastLogin;
   if (updateData.premium !== undefined) u.premium = updateData.premium;
+  if (updateData.premiumRequest !== undefined) u.premiumRequest = updateData.premiumRequest;
 
   saveDb(db);
   const { password, unabToken, ...safeUser } = u;
@@ -504,6 +545,7 @@ function updateSettings(newSettings) {
 }
 
 module.exports = {
+  initialize, flush, close, health, getSessions, saveSessions,
   ADMIN_EMAIL,
   ADMIN_PASSWORD,
   loadDb,

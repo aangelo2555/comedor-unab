@@ -2,25 +2,21 @@
 <html lang="es">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <meta name="theme-color" content="#f7fbff">
   <title>Comedor UNAB · Sistema de Reservas & Autopilot</title>
   <link rel="icon" href="/assets/favicon.ico">
   <link rel="stylesheet" href="/style.css">
   <script src="/qrcode.min.js"></script>
 </head>
-<body>
+<body class="login-session">
 
   <!-- VIEW 1: AUTHENTICATION SCREEN (LOGIN & AUTO-REGISTRO) -->
   <div id="view-login" class="login-view">
-    <div class="login-intro">
-      <span class="intro-brand">UNAB · Comedor universitario</span>
-      <h1>Tu próxima comida,<br>con un día de ventaja.</h1>
-      <p>Organiza tus reservas y lleva tu pase digital siempre contigo.</p>
-    </div>
     <div class="login-card">
       <div class="login-header">
         <img src="/assets/logo_unab.png" alt="UNAB" class="login-logo" onerror="this.style.display='none'">
-        <h2>Comedor Universitario</h2>
+        <h2>Ingresa al comedor</h2>
         <p>Universidad Nacional de Barranca</p>
       </div>
 
@@ -30,7 +26,7 @@
           <line x1="12" y1="16" x2="12" y2="12"></line>
           <line x1="12" y1="8" x2="12.01" y2="8"></line>
         </svg>
-        <span>Ingresa con tu código y contraseña institucional. El registro de tu cuenta se realiza automáticamente en tu primer acceso.</span>
+        <span>Usa tu cuenta institucional UNAB. Tu perfil se crea al ingresar.</span>
       </div>
 
       <form id="loginForm">
@@ -261,7 +257,7 @@
                   <th>Alumno / Código</th>
                   <th>DNI</th>
                   <th>Sede</th>
-                  <th>Gestión de Reservas (Hoy y Mañana)</th>
+                  <th>Reservas de hoy</th>
                   <th>Auto-Reserva</th>
                   <th>Acciones</th>
                 </tr>
@@ -356,29 +352,29 @@
     <div id="panel-student" style="display: none;">
       <section class="portal-hero">
         <p class="hero-eyebrow">Tu comedor universitario</p>
-        <h2>Reserva hoy.<br>Disfruta mañana.</h2>
-        <p>Elige tu comida, organiza tu día y ten tu pase a mano.</p>
-        <button class="btn btn-primary" id="btnPremiumOffer">Conocer Premium</button>
+        <h2>Tu comida de hoy.</h2>
+        <p>Elige tu servicio y consulta tus pases.</p>
+        <button class="btn btn-primary" id="btnPremiumOffer">Automatiza tu ciclo por S/ 9</button>
       </section>
       <nav class="tabs-header">
         <button class="tab-link active" data-target="student-tab-meals">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M18 2v20M6 2v20M3 2v6a3 3 0 0 0 6 0V2M14 2v8a2 2 0 0 0 4 0V2"></path>
           </svg>
-          Reserva tu comida
+          Reservar
         </button>
         <button class="tab-link" data-target="student-tab-tickets">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <rect x="3" y="4" width="18" height="16" rx="2"></rect>
             <line x1="3" y1="10" x2="21" y2="10"></line>
           </svg>
-          Mis Reservas y QR <span class="badge badge-success" id="studentTicketsBadge">0</span>
+          Mis pases <span class="badge badge-success" id="studentTicketsBadge">0</span>
         </button>
         <button class="tab-link" data-target="student-tab-status">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path>
           </svg>
-          Mi Asistencia
+          Asistencia
         </button>
       </nav>
 
@@ -386,7 +382,7 @@
       <div class="tab-pane active" id="student-tab-meals">
         
         <div class="unab-header-section">
-          <p class="unab-date-badge" id="studentHeaderDate">Jueves, 1 De Octubre</p>
+          <p class="unab-date-badge" id="studentHeaderDate">Hoy</p>
           <h2 class="unab-main-title">Reserva tu comida</h2>
           <p class="unab-subtitle">Perfil actual: <strong>libre</strong> · sede <strong>La Florida</strong></p>
         </div>
@@ -394,16 +390,6 @@
         <div class="unab-campus-banner">
           <div class="unab-banner-indicator"></div>
           <span>Tu sede principal <strong>La Florida</strong> · Periodo <strong>2026-2</strong></span>
-        </div>
-
-        <!-- Segmented Date Switcher: Mañana vs Hoy -->
-        <div class="advance-toggle-shelf">
-          <button class="btn btn-secondary btn-sm active" id="btnViewTomorrow">
-            Reserva Anticipada para Mañana (<span id="lblTomorrowDate">--</span>)
-          </button>
-          <button class="btn btn-secondary btn-sm" id="btnViewToday">
-            Disponibilidad de Hoy (<span id="lblTodayDate">--</span>)
-          </button>
         </div>
 
         <!-- 3 MEAL CARDS (DESAYUNO, ALMUERZO, CENA) -->
@@ -501,17 +487,31 @@
     <div class="modal-card premium-modal">
       <div class="modal-header"><h3 id="premiumModalTitle">Tu comedor en automático</h3><button class="modal-close-btn" type="button" aria-label="Cerrar" onclick="closeModal('modalPremium')">&times;</button></div>
       <div class="modal-body">
-        <span class="premium-label">Premium</span><h2>Elige una vez.<br>Organiza todo el ciclo.</h2>
-        <p>Solicitudes anticipadas recurrentes para los servicios que elijas, prioridad en la cola y cancelación preventiva de tickets que sigan activos antes del cierre.</p>
-        <p id="premiumAccessMessage" role="status"></p>
         <form id="formPremiumMeals">
-          <fieldset class="premium-meal-options"><legend>¿Qué servicios quieres programar?</legend>
-            <label><input type="checkbox" name="meal" value="DESAYUNO"><span>Desayuno<small>Comienza tu día</small></span></label>
-            <label><input type="checkbox" name="meal" value="ALMUERZO"><span>Almuerzo<small>Tu pausa del mediodía</small></span></label>
-            <label><input type="checkbox" name="meal" value="CENA"><span>Cena<small>Termina bien tu jornada</small></span></label>
-          </fieldset>
-          <p class="premium-help">Puedes cambiar la selección o quitar todos los servicios para detener las solicitudes futuras. Los tickets ya confirmados se gestionan desde tus pases. La cancelación remota debe confirmarse antes del cierre.</p>
-          <button class="btn btn-primary btn-block" id="btnSavePremium" type="submit">Guardar mis servicios</button>
+          <section id="premiumSelectionStep">
+            <h2>Elige una vez.<br>Reserva cada día.</h2>
+            <p>Reservas automáticas durante tu ciclo y cancelación preventiva de los tickets que sigan activos antes del cierre.</p>
+            <p id="premiumAccessMessage" role="status"></p>
+            <fieldset class="premium-meal-options"><legend>Selecciona tus comidas</legend>
+              <label><input type="checkbox" name="meal" value="DESAYUNO"><span>Desayuno</span></label>
+              <label><input type="checkbox" name="meal" value="ALMUERZO"><span>Almuerzo</span></label>
+              <label><input type="checkbox" name="meal" value="CENA"><span>Cena</span></label>
+            </fieldset>
+            <button class="btn btn-primary btn-block" id="btnSavePremium" type="submit">Continuar</button>
+          </section>
+          <section id="premiumPaymentStep" hidden>
+            <button class="btn btn-secondary btn-sm" id="btnPremiumBack" type="button">Volver a mis comidas</button>
+            <h2>Tu ciclo en automático</h2>
+            <p id="premiumPaymentMeals"></p>
+            <div class="premium-price"><span>Total por el servicio del ciclo</span><strong>S/ 9.00</strong></div>
+            <p>Realiza el pago mediante Yape al</p>
+            <p class="yape-number">923 887 478</p>
+            <button class="btn btn-secondary" type="button" id="btnCopyYape">Copiar número</button>
+            <div class="form-group"><label class="form-label" for="premiumPaymentReference">Número de operación de Yape</label><input class="form-control" id="premiumPaymentReference" type="text" minlength="3" maxlength="80" autocomplete="off"></div>
+            <p class="premium-help">El administrador verificará el pago y activará tus comidas hasta el fin de tu ciclo. La cancelación se anticipa según la cola y requiere confirmación de UNAB.</p>
+            <button class="btn btn-primary btn-block" id="btnSubmitPremiumPayment" type="button">Enviar pago a revisión</button>
+            <p id="premiumPaymentStatus" role="status"></p>
+          </section>
         </form>
       </div>
     </div>
@@ -521,6 +521,8 @@
     <div class="modal-card"><div class="modal-header"><h3 id="adminPremiumTitle">Configurar Premium</h3><button class="modal-close-btn" type="button" aria-label="Cerrar" onclick="closeModal('modalAdminPremium')">&times;</button></div>
       <form id="formAdminPremium" class="modal-body">
         <p id="adminPremiumStudent"></p>
+        <p id="adminPremiumPaymentSummary"></p>
+        <label id="adminPremiumPaymentConfirmation" class="premium-enable" hidden><input type="checkbox" id="adminConfirmPremiumPayment"> Confirmo que recibí el pago de S/ 9 por Yape</label>
         <label class="premium-enable"><input id="adminPremiumEnabled" type="checkbox"> Habilitar servicio premium</label>
         <div class="form-group"><label class="form-label" for="adminPremiumEndDate">Último día del ciclo</label><input class="form-control" id="adminPremiumEndDate" type="date"></div>
         <button class="btn btn-primary btn-block" type="submit">Guardar configuración</button>

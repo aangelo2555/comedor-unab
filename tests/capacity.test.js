@@ -147,6 +147,7 @@ test('100 students across three services and two dates keep queues separate unde
     __dirname: path.resolve(__dirname, '..'),
     process: {
       ...process,
+      once() {},
       env: { ...process.env, UNAB_REQUEST_INTERVAL_MS: '1' }
     },
     console,

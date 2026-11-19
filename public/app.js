@@ -6,13 +6,13 @@
 
 let currentAuth = null;
 let premiumActive = false;
+let premiumPaymentRequest = null;
 let modalPreviousFocus = null;
 let serverOffset = 0;
 let studentTickets = [];
 let adminUsersList = [];
 let todayDateStr = '';
-let tomorrowDateStr = '';
-let studentViewDate = ''; // Defaults to tomorrow for advance reservations
+let studentViewDate = ''; // Current service date in Lima
 
 // Minimalist Toast Notifications (Clean SVGs, No Emojis)
 function showToast(message, type = 'info') {
@@ -103,19 +103,17 @@ async function syncTime() {
     const latency = Date.now() - t0;
     serverOffset = (data.timestamp + latency / 2) - Date.now();
 
-    todayDateStr = data.today;
-    tomorrowDateStr = data.tomorrow;
+    const previousDate = studentViewDate;
+    todayDateStr = data.today || new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
 
-    if (!studentViewDate) {
-      studentViewDate = data.tomorrow;
-    }
-
-    const lblTom = document.getElementById('lblTomorrowDate');
-    const lblTod = document.getElementById('lblTodayDate');
-    if (lblTom) lblTom.textContent = data.tomorrow;
-    if (lblTod) lblTod.textContent = data.today;
+    studentViewDate = todayDateStr;
 
     updateStudentHeaderDate();
+    if (previousDate && previousDate !== studentViewDate && currentAuth?.role === 'user') {
+      loadStudentMealCards(studentViewDate);
+      loadStudentTickets();
+      loadPremiumState();
+    }
   } catch (err) {
     console.error('Error sincronizando hora:', err);
   }
@@ -124,7 +122,7 @@ async function syncTime() {
 function updateStudentHeaderDate() {
   const headerDateEl = document.getElementById('studentHeaderDate');
   if (headerDateEl) {
-    headerDateEl.textContent = formatSpanishDate(studentViewDate || tomorrowDateStr);
+    headerDateEl.textContent = formatSpanishDate(studentViewDate || todayDateStr);
   }
 }
 
@@ -152,7 +150,14 @@ async function checkAuthSession() {
   }
 }
 
+function setPageTheme(color) {
+  document.querySelector('meta[name="theme-color"]').content = color;
+}
+
 function showLoginView() {
+  document.body.classList.add('login-session');
+  document.body.classList.remove('admin-session');
+  setPageTheme('#f7fbff');
   currentAuth = null;
   premiumActive = false;
   document.body.classList.remove('premium-session');
@@ -163,6 +168,9 @@ function showLoginView() {
 }
 
 function showAppView(user) {
+  document.body.classList.remove('login-session');
+  document.body.classList.toggle('admin-session', user.role === 'superadmin');
+  setPageTheme('#6ca8ed');
   document.getElementById('view-login').style.display = 'none';
   document.getElementById('view-app').style.display = 'block';
 
@@ -263,31 +271,6 @@ function renderAdminUsersTable(users) {
   users.forEach(u => {
     const tr = document.createElement('tr');
 
-    let mananaHtml = '<div style="margin-bottom: 0.25rem;"><strong style="font-size: 0.76rem; color: var(--navy-primary);">Mañana:</strong> ';
-    if (u.reservasManana && u.reservasManana.length > 0) {
-      const pills = u.reservasManana.map(r => {
-        const isConfirmada = r.status === 'CONFIRMADA';
-        const isActiva = r.status === 'ACTIVA';
-        const badgeClass = isConfirmada ? 'badge-success' : isActiva ? 'badge-warning' : 'badge-neutral';
-
-        return `
-          <div style="display: inline-flex; align-items: center; gap: 0.25rem; margin: 2px 4px 2px 0;">
-            <span class="badge ${badgeClass}">${r.meal} (${r.status})</span>
-            ${!isConfirmada ? `
-              <button class="btn btn-secondary btn-sm" 
-                style="padding: 1px 6px; font-size: 0.7rem; line-height: 1;" 
-                onclick="adminToggleReserva('${r.id}')">
-                ${isActiva ? 'Pausar' : 'Activar'}
-              </button>
-            ` : ''}
-          </div>
-        `;
-      }).join(' ');
-      mananaHtml += pills + '</div>';
-    } else {
-      mananaHtml += '<span style="color: var(--slate-500); font-size: 0.76rem;">Sin reservas</span></div>';
-    }
-
     let hoyHtml = '<div><strong style="font-size: 0.76rem; color: var(--slate-600);">Hoy:</strong> ';
     if (u.reservasHoy && u.reservasHoy.length > 0) {
       const pills = u.reservasHoy.map(r => `
@@ -300,7 +283,6 @@ function renderAdminUsersTable(users) {
 
     const combinedHistory = `
       <div style="display: flex; flex-direction: column; gap: 0.15rem; min-width: 250px;">
-        ${mananaHtml}
         ${hoyHtml}
       </div>
     `;
@@ -321,7 +303,7 @@ function renderAdminUsersTable(users) {
       </td>
       <td>
         ${u.role !== 'superadmin' ? `
-          <button class="btn btn-secondary btn-sm" onclick="configureUserPremium('${u.id}')">${u.premium?.enabled ? 'Editar Premium' : 'Habilitar Premium'}</button>
+          <button class="btn btn-secondary btn-sm" onclick="configureUserPremium('${u.id}')">${u.premiumRequest?.status === 'PENDING' ? 'Verificar pago' : u.premium?.enabled ? 'Editar Premium' : 'Habilitar Premium'}</button>
           <button class="btn btn-danger btn-sm" onclick="deleteUserPrompt('${u.id}', '${u.username}')">Eliminar</button>
         ` : '<span class="badge badge-neutral">SuperAdmin</span>'}
       </td>
@@ -679,7 +661,9 @@ document.getElementById('btnAdminForceFire')?.addEventListener('click', async ()
 // --------------------------------------------------------------------------
 // STUDENT PORTAL (REPLICA EXACTA IMAGEN 2)
 // --------------------------------------------------------------------------
-function initStudentPanel(user) {
+async function initStudentPanel(user) {
+  await syncTime();
+  if (currentAuth?.id !== user.id) return;
   const fNom = document.getElementById('fichaNombre');
   if (fNom) fNom.textContent = user.name || user.username;
   const fCod = document.getElementById('fichaCodigo');
@@ -704,23 +688,6 @@ async function loadStudentAttendance() {
     }
   } catch {}
 }
-
-// Date Switcher Listeners
-document.getElementById('btnViewTomorrow')?.addEventListener('click', () => {
-  studentViewDate = tomorrowDateStr;
-  document.getElementById('btnViewTomorrow').className = 'btn btn-secondary btn-sm active';
-  document.getElementById('btnViewToday').className = 'btn btn-secondary btn-sm';
-  updateStudentHeaderDate();
-  loadStudentMealCards(studentViewDate);
-});
-
-document.getElementById('btnViewToday')?.addEventListener('click', () => {
-  studentViewDate = todayDateStr;
-  document.getElementById('btnViewToday').className = 'btn btn-secondary btn-sm active';
-  document.getElementById('btnViewTomorrow').className = 'btn btn-secondary btn-sm';
-  updateStudentHeaderDate();
-  loadStudentMealCards(studentViewDate);
-});
 
 let mealCardsRequest = 0;
 
@@ -783,8 +750,13 @@ async function loadStudentMealCards(targetDate) {
 
     const nowLima = new Date(Date.now() + serverOffset);
     const isToday = (targetDate === todayDateStr);
-    const currentH = nowLima.getHours();
-    const currentM = nowLima.getMinutes();
+    const timeParts = new Intl.DateTimeFormat('en-GB', { timeZone: 'America/Lima', hour: '2-digit', minute: '2-digit', hourCycle: 'h23' }).formatToParts(nowLima);
+    const currentH = Number(timeParts.find(part => part.type === 'hour').value);
+    const currentM = Number(timeParts.find(part => part.type === 'minute').value);
+    const currentMinutes = currentH * 60 + currentM;
+    if (isToday) {
+      mealsConfig.sort((a, b) => Number(currentMinutes >= a.cutoffHour * 60 + a.cutoffMin) - Number(currentMinutes >= b.cutoffHour * 60 + b.cutoffMin));
+    }
 
     mealsConfig.forEach(meal => {
       const pItem = progItems.find(i => (i.tipoComida || '').toUpperCase() === meal.key);
@@ -977,7 +949,7 @@ async function loadStudentTickets() {
       container.innerHTML = `
         <div class="card" style="text-align: center; padding: 2.5rem;">
           <p style="color: var(--slate-800); font-weight: 600;">No tienes tickets confirmados para hoy.</p>
-          <p style="color: var(--slate-500); font-size: 0.84rem; margin-top: 0.25rem;">${premiumActive ? 'Tus pases confirmados aparecerán aquí. Los servicios seleccionados se solicitarán automáticamente.' : 'Puedes realizar tu reserva anticipada para mañana desde la pestaña "Reserva tu comida".'}</p>
+          <p style="color: var(--slate-500); font-size: 0.84rem; margin-top: 0.25rem;">${premiumActive ? 'Tus pases confirmados aparecerán aquí. Los servicios seleccionados se solicitarán automáticamente.' : 'Puedes realizar tu reserva anticipada para hoy desde la pestaña "Reserva tu comida".'}</p>
         </div>
       `;
       return;
@@ -1209,7 +1181,14 @@ async function loadPremiumState(showOffer = false) {
     const data = await response.json();
     if (currentAuth?.id !== userId) return;
     if (!response.ok) throw new Error(data.error || 'No se pudo consultar Premium.');
+    const wasActive = premiumActive;
     premiumActive = data.active;
+    if (premiumActive && !wasActive && document.getElementById('modalPremium').classList.contains('active')) {
+      closeModal('modalPremium');
+      showToast('Premium activado. Tus servicios están programados.', 'success');
+    }
+    premiumPaymentRequest = data.paymentRequest || null;
+    setPageTheme(premiumActive ? '#0e243b' : '#6ca8ed');
     currentAuth.premium = data.premium;
     document.body.classList.toggle('premium-session', premiumActive);
     document.getElementById('panel-student').style.display = premiumActive ? 'none' : 'block';
@@ -1221,7 +1200,7 @@ async function loadPremiumState(showOffer = false) {
     document.getElementById('premiumCycleSummary').textContent = premiumActive ? `Servicio habilitado hasta el ${data.premium.endDate}.` : '';
     document.getElementById('premiumSelectedMeals').textContent = data.premium.meals.map(meal => premiumMealNames[meal]).join(' · ') || 'Elige tus comidas';
     renderPremiumRequests(data.appointments || []);
-    updatePremiumModal();
+    if (!document.getElementById('modalPremium').classList.contains('active')) updatePremiumModal();
     if (showOffer && !premiumActive && !sessionStorage.getItem('premium_offer_' + currentAuth.id)) {
       sessionStorage.setItem('premium_offer_' + currentAuth.id, 'seen');
       openModal('modalPremium');
@@ -1233,25 +1212,49 @@ async function loadPremiumState(showOffer = false) {
 
 function updatePremiumModal() {
   const plan = currentAuth?.premium || { meals: [] };
+  const meals = premiumActive ? plan.meals : premiumPaymentRequest?.meals || [];
   document.getElementById('premiumAccessMessage').textContent = premiumActive
-    ? `Premium habilitado hasta el ${plan.endDate}. Guarda los servicios que quieres repetir cada día.`
-    : 'El administrador puede habilitar Premium y configurar la fecha de fin de tu ciclo.';
+    ? `Servicio activo hasta el ${plan.endDate}. Puedes cambiar tus comidas.`
+    : premiumPaymentRequest?.status === 'PENDING' ? 'Tu pago está pendiente de verificación. Puedes actualizar tu selección.' : '';
   document.querySelectorAll('#formPremiumMeals input[name="meal"]').forEach(input => {
-    input.checked = plan.meals.includes(input.value);
-    input.disabled = !premiumActive;
+    input.checked = meals.includes(input.value);
+    input.disabled = false;
   });
-  document.getElementById('btnSavePremium').disabled = !premiumActive;
+  document.getElementById('premiumSelectionStep').hidden = false;
+  document.getElementById('premiumPaymentStep').hidden = true;
+  document.getElementById('btnSavePremium').disabled = false;
+  document.getElementById('btnSavePremium').textContent = premiumActive ? 'Guardar mis servicios' : 'Continuar';
+  document.getElementById('premiumPaymentReference').value = premiumPaymentRequest?.reference || '';
+  document.getElementById('premiumPaymentReference').disabled = true;
+  document.getElementById('premiumPaymentStatus').textContent = '';
 }
 
 document.getElementById('btnPremiumOffer').addEventListener('click', () => { updatePremiumModal(); openModal('modalPremium'); });
 document.getElementById('btnPremiumSettings').addEventListener('click', () => { updatePremiumModal(); openModal('modalPremium'); });
 document.getElementById('btnPremiumRefresh').addEventListener('click', async () => { await loadPremiumState(); loadStudentTickets(); });
+function selectedPremiumMeals() {
+  return Array.from(document.querySelectorAll('#formPremiumMeals input[name="meal"]:checked')).map(input => input.value);
+}
+
 document.getElementById('formPremiumMeals').addEventListener('submit', async event => {
   event.preventDefault();
+  const meals = selectedPremiumMeals();
+  if (!premiumActive && !document.getElementById('premiumPaymentStep').hidden) {
+    document.getElementById('btnSubmitPremiumPayment').click();
+    return;
+  }
+  if (!premiumActive) {
+    if (!meals.length) { showToast('Selecciona al menos una comida.', 'info'); return; }
+    document.getElementById('premiumPaymentMeals').textContent = meals.map(meal => premiumMealNames[meal]).join(' · ');
+    document.getElementById('premiumSelectionStep').hidden = true;
+    document.getElementById('premiumPaymentStep').hidden = false;
+    document.getElementById('premiumPaymentReference').disabled = false;
+    document.getElementById('premiumPaymentReference').focus();
+    return;
+  }
   const button = document.getElementById('btnSavePremium');
   button.disabled = true;
   try {
-    const meals = Array.from(document.querySelectorAll('#formPremiumMeals input:checked')).map(input => input.value);
     const response = await fetch('/api/student/premium', { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ meals }) });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'No se pudo guardar la selección.');
@@ -1259,7 +1262,31 @@ document.getElementById('formPremiumMeals').addEventListener('submit', async eve
     closeModal('modalPremium');
     showToast('Servicios recurrentes guardados.', 'success');
   } catch (error) { showToast(error.message, 'error'); }
-  finally { button.disabled = !premiumActive; }
+  finally { button.disabled = false; }
+});
+
+document.getElementById('btnPremiumBack').addEventListener('click', () => {
+  document.getElementById('premiumPaymentReference').disabled = true;
+  document.getElementById('premiumSelectionStep').hidden = false;
+  document.getElementById('premiumPaymentStep').hidden = true;
+});
+document.getElementById('btnCopyYape').addEventListener('click', async () => {
+  try { await navigator.clipboard.writeText('923887478'); showToast('Número copiado.', 'success'); }
+  catch { showToast('Número de Yape: 923887478', 'info'); }
+});
+document.getElementById('btnSubmitPremiumPayment').addEventListener('click', async () => {
+  const input = document.getElementById('premiumPaymentReference');
+  if (input.value.trim().length < 3) { input.setCustomValidity('Ingresa el número de operación de Yape.'); input.reportValidity(); input.setCustomValidity(''); return; }
+  const button = document.getElementById('btnSubmitPremiumPayment');
+  button.disabled = true;
+  try {
+    const response = await fetch('/api/student/premium/checkout', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ meals: selectedPremiumMeals(), reference: input.value.trim() }) });
+    const data = await response.json();
+    if (!response.ok) throw new Error(data.error || 'No se pudo enviar el pago.');
+    premiumPaymentRequest = data.paymentRequest;
+    document.getElementById('premiumPaymentStatus').textContent = 'Pago enviado a revisión. Recibirás acceso cuando el administrador confirme el abono y el fin de tu ciclo.';
+  } catch (error) { document.getElementById('premiumPaymentStatus').textContent = error.message; }
+  finally { button.disabled = false; }
 });
 
 function configureUserPremium(id) {
@@ -1267,6 +1294,12 @@ function configureUserPremium(id) {
   if (!user) return;
   editingPremiumUserId = id;
   document.getElementById('adminPremiumStudent').textContent = user.name || user.username;
+  const payment = user.premiumRequest;
+  const pending = payment?.status === 'PENDING';
+  document.getElementById('adminPremiumPaymentSummary').textContent = pending
+    ? `Pago por verificar: S/ 9.00 · Operación ${payment.reference} · ${payment.meals.map(meal => premiumMealNames[meal]).join(' · ')}` : '';
+  document.getElementById('adminPremiumPaymentConfirmation').hidden = !pending;
+  document.getElementById('adminConfirmPremiumPayment').checked = false;
   const enabled = document.getElementById('adminPremiumEnabled');
   enabled.checked = Boolean(user.premium?.enabled);
   const date = document.getElementById('adminPremiumEndDate');
@@ -1286,7 +1319,7 @@ document.getElementById('formAdminPremium').addEventListener('submit', async eve
   try {
     const response = await fetch('/api/admin/premium/' + encodeURIComponent(editingPremiumUserId), {
       method: 'PUT', headers: authHeaders(),
-      body: JSON.stringify({ enabled: document.getElementById('adminPremiumEnabled').checked, endDate: document.getElementById('adminPremiumEndDate').value })
+      body: JSON.stringify({ enabled: document.getElementById('adminPremiumEnabled').checked, endDate: document.getElementById('adminPremiumEndDate').value, confirmPayment: document.getElementById('adminConfirmPremiumPayment').checked })
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'No se pudo configurar Premium.');

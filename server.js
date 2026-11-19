@@ -10,6 +10,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 const db = require('./db');
+const { OFFER, createPaymentRequest } = require('./premium-checkout');
 const { MEALS, isPremium, compareQueue, validatePremium, createPremiumService } = require('./premium-service');
 const { RequestGate, retryDelay } = require('./upstream-control');
 const { createReservationService, mapWithConcurrency } = require('./reservation-service');
@@ -30,6 +31,7 @@ const PUBLIC_DIR = path.join(__dirname, 'public');
 
 // Active in-memory session tokens: { [token]: { userId, username, role, expiresAt } }
 const sessions = new Map();
+const sessionKey = token => crypto.createHash('sha256').update(token).digest('hex');
 
 // Server Sent Events (SSE) connections
 const sseClients = new Set();
@@ -42,6 +44,7 @@ setInterval(() => {
       sessions.delete(token);
     }
   }
+  db.saveSessions?.([...sessions]);
 }, 10 * 60 * 1000);
 
 // Global Sniper State (Keep timer IDs outside the object to prevent circular JSON serialization errors)
@@ -140,6 +143,8 @@ function emitLog(message, type = 'info') {
 
 // Bound slow upstream responses, including their bodies. Retry only reads and login.
 async function fetchUnabResponse(url, options = {}, retryable = true) {
+  try { await db.flush?.(); }
+  catch { return { ok: false, status: 503, data: { error: 'No se pudo confirmar la persistencia local.' } }; }
   const attempts = retryable ? 2 : 1;
   for (let attempt = 0; attempt < attempts; attempt++) {
     try {
@@ -1098,10 +1103,11 @@ function getSessionFromReq(req) {
     }
   }
 
-  if (!token || !sessions.has(token)) return null;
-  const sess = sessions.get(token);
+  if (!token || !sessions.has(sessionKey(token))) return null;
+  const sess = sessions.get(sessionKey(token));
   if (sess.expiresAt < Date.now()) {
-    sessions.delete(token);
+    sessions.delete(sessionKey(token));
+    db.saveSessions?.([...sessions]);
     return null;
   }
   return { token, ...sess };
@@ -1136,10 +1142,21 @@ const server = http.createServer(async (req, res) => {
     return res.end();
   }
 
-  const sendJson = (status, data) => {
+  const sendJson = async (status, data) => {
+    try { await db.flush?.(); }
+    catch { status = 503; data = { error: 'No se pudo confirmar el guardado. Vuelve a intentarlo.' }; }
+    if (res.destroyed || res.writableEnded) return;
     res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify(data));
   };
+
+  try { await db.flush?.(); }
+  catch { return sendJson(503, { error: 'PostgreSQL no está disponible.' }); }
+
+  if (pathname === '/healthz') {
+    try { await db.health?.(); return sendJson(200, { status: 'ok' }); }
+    catch { return sendJson(503, { status: 'database_unavailable' }); }
+  }
 
   // --- SSE STREAM ---
   if (pathname === '/api/events') {
@@ -1236,13 +1253,14 @@ const server = http.createServer(async (req, res) => {
 
     // Create session token
     const token = crypto.randomBytes(24).toString('hex');
-    sessions.set(token, {
+    sessions.set(sessionKey(token), {
       userId: user.id,
       username: user.username,
       role: user.role,
       expiresAt: Date.now() + 24 * 60 * 60 * 1000 // 24 hours
     });
 
+    db.saveSessions?.([...sessions]);
     db.addAuditLog(`Inicio de sesión de ${user.username} (${user.role}).`, 'info');
 
     const { password: _, unabToken: __, ...safeUser } = user;
@@ -1268,7 +1286,7 @@ const server = http.createServer(async (req, res) => {
   // POST /api/auth/logout
   if (pathname === '/api/auth/logout' && req.method === 'POST') {
     const session = getSessionFromReq(req);
-    if (session) sessions.delete(session.token);
+    if (session) { sessions.delete(sessionKey(session.token)); db.saveSessions?.([...sessions]); }
     return sendJson(200, { success: true });
   }
 
@@ -1285,9 +1303,15 @@ const server = http.createServer(async (req, res) => {
       const user = db.findUserById(userId);
       if (!user || user.role === 'superadmin') return sendJson(404, { error: 'Estudiante no encontrado' });
       try {
-        const plan = validatePremium(await parseJsonBody(req));
-        if (plan.enabled && user.premium?.meals) plan.meals = user.premium.meals;
-        db.updateUser(user.id, { premium: plan });
+        const body = await parseJsonBody(req);
+        const plan = validatePremium(body);
+        const payment = user.premiumRequest;
+        if (plan.enabled && payment?.status === 'PENDING' && body.confirmPayment !== true) {
+          return sendJson(400, { error: 'Confirma la recepción del pago antes de activar Premium.' });
+        }
+        if (plan.enabled) plan.meals = payment?.status === 'PENDING' ? payment.meals : user.premium?.meals || [];
+        db.updateUser(user.id, { premium: plan,
+          ...(plan.enabled && payment?.status === 'PENDING' ? { premiumRequest: { ...payment, status: 'APPROVED', approvedAt: new Date().toISOString(), approvedBy: session.userId } } : {}) });
         await premiumService.tick();
         return sendJson(200, { success: true, premium: plan });
       } catch (error) { return sendJson(400, { error: error.message }); }
@@ -1355,7 +1379,7 @@ const server = http.createServer(async (req, res) => {
       const userId = pathname.replace('/api/admin/users/', '');
       const body = await parseJsonBody(req);
       try {
-        if (body.premium !== undefined) return sendJson(400, { error: 'Usa la configuración premium del alumno.' });
+        if (body.premium !== undefined || body.premiumRequest !== undefined) return sendJson(400, { error: 'Usa la configuración premium del alumno.' });
         const updated = db.updateUser(userId, body);
         return sendJson(200, { success: true, user: updated });
       } catch (e) {
@@ -1444,6 +1468,17 @@ const server = http.createServer(async (req, res) => {
 
   // --- STUDENT ADVANCE RESERVATION ROUTES ---
 
+  if (pathname === '/api/student/premium/checkout' && req.method === 'POST') {
+    if (!session) return sendJson(401, { error: 'Autenticación requerida' });
+    const user = db.findUserById(session.userId);
+    if (!user || user.role === 'superadmin') return sendJson(403, { error: 'Acceso de estudiante requerido' });
+    try {
+      const paymentRequest = createPaymentRequest(await parseJsonBody(req), user.premiumRequest);
+      db.updateUser(user.id, { premiumRequest: paymentRequest });
+      return sendJson(200, { success: true, paymentRequest });
+    } catch (error) { return sendJson(400, { error: error.message }); }
+  }
+
   if (pathname === '/api/student/premium' && ['GET', 'PUT'].includes(req.method)) {
     if (!session) return sendJson(401, { error: 'Autenticación requerida' });
     const user = db.findUserById(session.userId);
@@ -1456,16 +1491,15 @@ const server = http.createServer(async (req, res) => {
       await premiumService.tick();
     }
     const today = getTodayLimaDate(0);
-    const tomorrow = getTodayLimaDate(1);
     const appointments = db.getAdvanceReservations({ alumnoCodigo: user.username })
-      .filter(item => item.fecha >= today && item.fecha <= tomorrow)
+      .filter(item => item.fecha === today)
       .map(item => {
         const ticket = db.getAllReservations().find(ticket => ticket.alumnoCodigo === user.username &&
           ticket.fecha === item.fecha && ticket.tipoComida === item.tipoComida);
         return { id: item.id, meal: item.tipoComida, date: item.fecha, status: ticket?.estado || item.status,
           authPending: item.status === 'ACTIVA' && authWarnings.has(user.id) };
       });
-    return sendJson(200, { success: true, premium: user.premium || { enabled: false, meals: [], endDate: '' }, active: isPremium(user), appointments });
+    return sendJson(200, { success: true, premium: user.premium || { enabled: false, meals: [], endDate: '' }, active: isPremium(user), appointments, offer: OFFER, paymentRequest: user.premiumRequest || null });
   }
 
   // GET /api/student/advance-reservations?fecha=YYYY-MM-DD
@@ -1474,7 +1508,8 @@ const server = http.createServer(async (req, res) => {
     const user = db.findUserById(session.userId);
     if (!user) return sendJson(401, { error: 'Usuario no encontrado' });
 
-    const fecha = searchParams.get('fecha') || getTodayLimaDate(1);
+    const fecha = searchParams.get('fecha') || getTodayLimaDate(0);
+    if (fecha !== getTodayLimaDate(0)) return sendJson(400, { error: 'Las solicitudes están disponibles solo para hoy.' });
     const reservations = db.getAdvanceReservations({
       alumnoCodigo: user.username,
       fecha
@@ -1491,7 +1526,9 @@ const server = http.createServer(async (req, res) => {
 
     const body = await parseJsonBody(req);
     const meal = (body.meal || 'ALMUERZO').toUpperCase();
-    const date = body.date || getTodayLimaDate(1);
+    const date = body.date || getTodayLimaDate(0);
+    if (date !== getTodayLimaDate(0)) return sendJson(400, { error: 'Solo puedes reservar para hoy.' });
+    if (!MEALS.includes(meal)) return sendJson(400, { error: 'Servicio inválido.' });
 
     // Schedule validation for today:
     const todayLima = getTodayLimaDate(0);
@@ -1503,7 +1540,7 @@ const server = http.createServer(async (req, res) => {
       if (meal === 'DESAYUNO' && (currentH > 10 || (currentH === 10 && currentM >= 30))) {
         return sendJson(400, { success: false, error: 'El horario de Desayuno para hoy (06:30 - 10:30) ya finalizó.' });
       }
-      if (meal === 'ALMUERZO' && (currentH > 16 || (currentH === 16 && currentM > 0))) {
+      if (meal === 'ALMUERZO' && currentH >= 16) {
         return sendJson(400, { success: false, error: 'El horario de Almuerzo para hoy (11:00 - 16:00) ya finalizó.' });
       }
       if (meal === 'CENA' && (currentH > 19 || (currentH === 19 && currentM >= 0))) {
@@ -1627,6 +1664,7 @@ const server = http.createServer(async (req, res) => {
   // GET /api/comedor/programacion?date=YYYY-MM-DD
   if (pathname === '/api/comedor/programacion' && req.method === 'GET') {
     const dateParam = searchParams.get('date') || getTodayLimaDate(0);
+    if (dateParam !== getTodayLimaDate(0)) return sendJson(400, { error: 'La disponibilidad se consulta solo para hoy.' });
     let token = null;
 
     if (session && session.userId) {
@@ -1688,6 +1726,7 @@ const server = http.createServer(async (req, res) => {
 
     emitLog(`Intento de reserva manual para ${user.name} (ID: ${progId})...`, 'info');
     const date = body.fecha || getTodayLimaDate(0);
+    if (date !== getTodayLimaDate(0)) return sendJson(400, { error: 'Solo puedes reservar para hoy.' });
     if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) return sendJson(400, { error: 'Fecha inválida' });
     const programming = await fetchComedorApi(`/programacion/me?date=${date}`, token);
     const item = programming.ok && Array.isArray(programming.data?.data) &&
@@ -1846,7 +1885,12 @@ const server = http.createServer(async (req, res) => {
 const premiumService = createPremiumService({ db, configs: MEAL_CONFIGS, getToken: user => getValidUnabToken(user, false, { priority: 10, timeoutMs: 5000 }), callApi: fetchComedorApi, log: emitLog, requestIntervalMs: upstreamGate.intervalMs });
 let premiumIntervalId = null;
 
-server.listen(PORT, '0.0.0.0', () => {
+async function startServer() {
+  await db.initialize?.();
+  for (const [key, value] of db.getSessions?.() || []) {
+    if (value.expiresAt > Date.now() && db.findUserById(value.userId)) sessions.set(key, value);
+  }
+  server.listen(PORT, '0.0.0.0', () => {
   const mem = process.memoryUsage();
   console.log(`\n======================================================`);
   console.log(`[SISTEMA] COMEDOR UNAB - SAAS & RESERVAS`);
@@ -1863,4 +1907,16 @@ server.listen(PORT, '0.0.0.0', () => {
   // Start the 24/7 Master Railway Scheduler
   masterSchedulerIntervalId = setInterval(tickRailwayMasterScheduler, 5000);
   tickRailwayMasterScheduler();
+});
+
+}
+startServer().catch(() => {
+  console.error('[INICIO] No se pudo abrir la base de datos. Verifica DATABASE_URL y el servicio PostgreSQL.');
+  process.exitCode = 1;
+  process.exit(1);
+});
+process.once('SIGTERM', async () => {
+  server.close();
+  try { await db.close?.(); process.exit(0); }
+  catch { process.exit(1); }
 });

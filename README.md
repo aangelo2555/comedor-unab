@@ -85,7 +85,7 @@ El navegador se abrirá automáticamente en:
 ## ⚡ Rendimiento y Consumo de Memoria
 
 * **Consumo de RAM en reposo:** ~38 MB - 50 MB (ideal para el plan gratuito de Railway con 512 MB).
-* **Cero librerías pesadas:** Construido sobre las APIs nativas de Node.js (`http`, `fetch`, `crypto`).
+* **Dependencias:** APIs nativas de Node.js y el controlador `pg` para PostgreSQL.
 * **Estilo Visual:** Limpio, minimalista, paleta corporativa universitaria (blanco, gris pizarra, azul marino `#07406b`), **completamente libre de neón**.
 
 ## Desarrollo y pruebas de concurrencia
@@ -101,16 +101,40 @@ El servidor comparte un presupuesto de peticiones para autenticación, consultas
 
 Se respeta `Retry-After` ante saturación. Sin esa cabecera, los fallos temporales generan esperas crecientes. Una respuesta 403 pausa las peticiones durante un minuto. Las reservas consultan los tickets existentes antes de enviarse y después de una respuesta incierta.
 
-El control de concurrencia y la exclusión de reservas compartidas funcionan dentro de un proceso. El almacenamiento JSON actual y estos bloqueos requieren una sola instancia de `node server.js`. Varias réplicas requieren almacenamiento y coordinación compartidos. Los valores iniciales son una decisión local y deben ajustarse a los límites autorizados por UNAB.
+El control de concurrencia y la exclusión de reservas compartidas funcionan dentro de un proceso. La caché de trabajo y estos bloqueos requieren una sola instancia de `node server.js`. Varias réplicas requieren almacenamiento y coordinación compartidos. Los valores iniciales son una decisión local y deben ajustarse a los límites autorizados por UNAB.
 
 La simulación acelera la separación entre peticiones. Su duración mide la prueba local. La capacidad y los tiempos reales dependen de UNAB, y una respuesta perdida puede requerir reconciliación posterior.
 
 ## Premium por ciclo
 
-En Gestión de Alumnos, el administrador puede habilitar Premium y fijar el último día del ciclo para cada estudiante. El estudiante selecciona sus comidas desde el panel Premium. La tarea de mantenimiento conserva solicitudes para hoy y mañana y las renueva diariamente hasta la fecha inclusiva del ciclo. Una cita anulada o pausada se conserva para evitar recrearla ese mismo día.
+El alumno selecciona sus comidas en el modal y pasa a la hoja final de pago. El servicio cuesta S/ 9 por ciclo, mediante Yape al 923887478. El número de operación y la selección quedan pendientes de revisión. En Gestión de Alumnos, el administrador verifica el abono, confirma el pago y fija el último día del ciclo antes de activar Premium. La tarea de mantenimiento genera solicitudes para el día actual de Lima y las renueva al comenzar cada día hasta la fecha inclusiva del ciclo. Una cita anulada o pausada se conserva para evitar recrearla ese mismo día.
 
 La cola procesa primero a los alumnos Premium y mantiene el orden original de registro dentro de cada grupo. Un fallo de autenticación conserva la solicitud y registra un aviso periódico con el estado de UNAB.
 
 Antes del cierre se comprueba nuevamente el estado remoto del ticket. Solo los tickets que UNAB devuelve como `ACTIVA` son candidatos a anulación. Las operaciones de comprobación y cancelación tienen prioridad en el presupuesto de peticiones. El margen inicial es de 40 segundos, ampliado según la cantidad de tickets y el intervalo configurado. Con 100 tickets y el intervalo inicial, el proceso comienza cuatro minutos antes del cierre. La anulación requiere confirmación remota. Interrupciones de UNAB o una máquina detenida pueden impedir completarla a tiempo.
 
-Las preferencias y las solicitudes sobreviven al reinicio dentro de la base JSON. El proceso debe mantenerse ejecutándose para generar las solicitudes y cancelar tickets. El modal informa al alumno de la cancelación preventiva y permite quitar servicios futuros.
+Las preferencias y las solicitudes sobreviven al reinicio en PostgreSQL cuando está configurado. El proceso debe mantenerse ejecutándose para generar las solicitudes y cancelar tickets. El modal informa al alumno de la cancelación preventiva y permite quitar servicios futuros.
+
+## PostgreSQL y contenedores
+
+Instala las dependencias con `npm ci`. Configura `DATABASE_URL` con la conexión PostgreSQL o las variables estándar `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER` y `PGPASSWORD`. El arranque crea la tabla `comedor_state` y guarda el estado de aplicación en JSONB, incluidos alumnos, tickets, solicitudes, pagos, preferencias, auditoría y sesiones. Los tokens de sesión se guardan como hashes SHA-256.
+
+Cuando la tabla está vacía, se importa el archivo `database.json` existente en `DATA_DIR`, cuyo valor inicial es `data/`. Cuando PostgreSQL ya contiene datos, conserva ese estado al desplegar una imagen nueva. Las respuestas de escritura esperan confirmación del guardado. La revisión del registro impide que otra instancia sobrescriba silenciosamente un estado más reciente. Configura una sola réplica.
+
+La aplicación exige PostgreSQL en producción. El desarrollo local mantiene la compatibilidad con JSON si no se configura una conexión. Los datos que se perdieron en contenedores anteriores requieren un respaldo para recuperarse. La pantalla de respaldo de administración permite exportar y restaurar JSON.
+
+### Docker Compose
+
+Configura `POSTGRES_PASSWORD`, `ADMIN_EMAIL` y `ADMIN_PASSWORD` como variables seguras de tu terminal o en un archivo de entorno privado. Ejecuta `docker compose up --build -d`. Se crean PostgreSQL, su volumen persistente y la aplicación, que espera la disponibilidad de la base. El servicio responde en el puerto 3000. `APP_PORT` permite cambiar el puerto local.
+
+`docker compose down` conserva el volumen. La opción `--volumes` elimina sus datos y debe reservarse para entornos descartables.
+
+### Railway
+
+Crea un servicio PostgreSQL dentro del mismo proyecto y enlaza su variable `DATABASE_URL` con la aplicación mediante una referencia de Railway. El servicio PostgreSQL requiere su volumen persistente. El Dockerfile construye la aplicación y Railway administra el servicio de base de datos por separado. La configuración del repositorio establece una réplica y la comprobación `/healthz`.
+
+Conserva un respaldo del despliegue actual antes de reemplazarlo. El archivo de un contenedor efímero pertenece a ese contenedor. La importación automática solo puede usar archivos que estén disponibles al iniciar la aplicación nueva. Para restaurar un respaldo en PostgreSQL, utiliza la función de restauración de administración después de enlazar la conexión.
+
+### Pruebas de persistencia
+
+Ejecuta `node --test tests/*.test.js` para las pruebas generales. Para la integración real de PostgreSQL, define `PG_TEST_CONFIG` con la ruta a un archivo JSON privado con las variables `PGHOST`, `PGPORT`, `PGDATABASE`, `PGUSER` y `PGPASSWORD` de una instancia de prueba. Ejecuta `node --test tests/postgres.test.js`. La prueba crea y elimina una base aislada y necesita permiso para esas operaciones. Comprueba migración, sesiones, solicitudes y pagos después de interrupciones abruptas del proceso.
