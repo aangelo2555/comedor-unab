@@ -1249,7 +1249,8 @@ document.getElementById('formPremiumMeals').addEventListener('submit', async eve
     document.getElementById('premiumSelectionStep').hidden = true;
     document.getElementById('premiumPaymentStep').hidden = false;
     document.getElementById('premiumPaymentReference').disabled = false;
-    document.getElementById('premiumPaymentReference').focus();
+    document.getElementById('premiumPaymentTitle').focus({ preventScroll: true });
+    document.querySelector('#modalPremium .modal-card').scrollTop = 0;
     return;
   }
   const button = document.getElementById('btnSavePremium');
@@ -1269,6 +1270,8 @@ document.getElementById('btnPremiumBack').addEventListener('click', () => {
   document.getElementById('premiumPaymentReference').disabled = true;
   document.getElementById('premiumSelectionStep').hidden = false;
   document.getElementById('premiumPaymentStep').hidden = true;
+  document.getElementById('btnSavePremium').focus({ preventScroll: true });
+  document.querySelector('#modalPremium .modal-card').scrollTop = 0;
 });
 document.getElementById('btnCopyYape').addEventListener('click', async () => {
   try { await navigator.clipboard.writeText('923887478'); showToast('Número copiado.', 'success'); }

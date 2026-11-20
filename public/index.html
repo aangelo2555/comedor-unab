@@ -485,12 +485,14 @@
 
   <div class="modal-overlay" id="modalPremium" role="dialog" aria-modal="true" aria-labelledby="premiumModalTitle">
     <div class="modal-card premium-modal">
-      <div class="modal-header"><h3 id="premiumModalTitle">Tu comedor en automático</h3><button class="modal-close-btn" type="button" aria-label="Cerrar" onclick="closeModal('modalPremium')">&times;</button></div>
+      <div class="modal-header"><h3 id="premiumModalTitle">Servicio Premium</h3><button class="modal-close-btn" type="button" aria-label="Cerrar" onclick="closeModal('modalPremium')">&times;</button></div>
       <div class="modal-body">
         <form id="formPremiumMeals">
           <section id="premiumSelectionStep">
-            <h2>Elige una vez.<br>Reserva cada día.</h2>
-            <p>Reservas automáticas durante tu ciclo y cancelación preventiva de los tickets que sigan activos antes del cierre.</p>
+            <h2>¿Cómo te ayuda Premium?</h2>
+            <p>Elige tus comidas y el servicio solicitará su reserva cada día hasta el fin de tu ciclo, sin que tengas que entrar a la página. Tus solicitudes tienen prioridad en nuestra cola y tus pases confirmados aparecen en tu cuenta.</p>
+            <p>Antes del cierre de cada comida, el servicio intenta cancelar los tickets que UNAB aún muestra como activos para prevenir inasistencias. Las reservas y cancelaciones dependen de los cupos y de la confirmación de UNAB.</p>
+            <p>El servicio cuesta S/ 9 por ciclo. Se activa cuando el administrador verifica tu pago y configura la fecha de fin. Puedes cambiar tus comidas después.</p>
             <p id="premiumAccessMessage" role="status"></p>
             <fieldset class="premium-meal-options"><legend>Selecciona tus comidas</legend>
               <label><input type="checkbox" name="meal" value="DESAYUNO"><span>Desayuno</span></label>
@@ -501,12 +503,13 @@
           </section>
           <section id="premiumPaymentStep" hidden>
             <button class="btn btn-secondary btn-sm" id="btnPremiumBack" type="button">Volver a mis comidas</button>
-            <h2>Tu ciclo en automático</h2>
+            <h2 id="premiumPaymentTitle" tabindex="-1">Pago del servicio Premium</h2>
             <p id="premiumPaymentMeals"></p>
             <div class="premium-price"><span>Total por el servicio del ciclo</span><strong>S/ 9.00</strong></div>
             <p>Realiza el pago mediante Yape al</p>
             <p class="yape-number">923 887 478</p>
             <button class="btn btn-secondary" type="button" id="btnCopyYape">Copiar número</button>
+            <p>Después de realizar el pago, ingresa el número de operación para enviarlo a revisión.</p>
             <div class="form-group"><label class="form-label" for="premiumPaymentReference">Número de operación de Yape</label><input class="form-control" id="premiumPaymentReference" type="text" minlength="3" maxlength="80" autocomplete="off"></div>
             <p class="premium-help">El administrador verificará el pago y activará tus comidas hasta el fin de tu ciclo. La cancelación se anticipa según la cola y requiere confirmación de UNAB.</p>
             <button class="btn btn-primary btn-block" id="btnSubmitPremiumPayment" type="button">Enviar pago a revisión</button>
