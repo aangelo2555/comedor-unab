@@ -157,7 +157,7 @@ function setPageTheme(color) {
 function showLoginView() {
   document.body.classList.add('login-session');
   document.body.classList.remove('admin-session');
-  setPageTheme('#f7fbff');
+  setPageTheme('#6ca8ed');
   currentAuth = null;
   premiumActive = false;
   document.body.classList.remove('premium-session');

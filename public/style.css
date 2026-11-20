@@ -1257,40 +1257,43 @@ body.premium-session .navbar, body.premium-session .brand-info h1, body.premium-
 
 /* Daily reservations and compact enrollment checkout. */
 [hidden] { display: none !important; }
-body.login-session { background: #f7fbff; }
+body.login-session { background: linear-gradient(165deg, #6ca8ed 0%, #a6cff3 58%, #e7f3fc 100%); background-attachment: fixed; }
 .login-view {
   min-height: 100dvh;
   padding: 48px 24px;
-  background: #eaf3fc;
+  background: transparent;
 }
 .login-card {
   width: 100%;
   max-width: 480px;
   min-height: auto;
-  border: 1px solid #dce8f3;
+  border: 1px solid #ffffffc9;
   border-radius: 26px;
   box-shadow: 0 16px 48px rgba(14, 36, 59, .08);
-  background: #f7fbff;
+  background: #ffffffed;
   display: flex;
   flex-direction: column;
   justify-content: center;
   padding: 40px;
 }
 .login-card > * { width: 100%; min-width: 0; }
-.login-header { margin-bottom: 24px; }
-.login-logo { width: 145px; height: auto; max-height: 72px; object-fit: contain; margin-bottom: 20px; }
-.login-header h2 { font-size: clamp(26px, 3vw, 32px); line-height: 1.2; }
-.login-header p { font-size: 14px; margin-top: 10px; }
-.login-card .form-control { font-size: 16px; }
-.login-notice { font-size: 14px; margin-bottom: 24px; }
+.login-header { text-align: left; margin-bottom: 18px; }
+.login-logo { width: 112px; height: auto; max-height: 56px; object-fit: contain; margin-bottom: 28px; }
+.login-header h2 { font-size: clamp(40px, 5.5vw, 52px); line-height: 1.04; letter-spacing: -.055em; color: #0b1d2c; }
+.login-header p { font-size: 14px; margin-top: 16px; color: #294c6a; }
+.login-card .form-control { font-size: 16px; background: #ffffffb3; border-color: #ffffffc9; border-radius: 16px; }
+.login-card .form-control:focus { border-color: #294c6a; }
+.login-card .form-label { color: #142a3d; }
+.login-notice { display: block; padding: 0; border: 0; border-radius: 0; background: transparent; color: #294c6a; font-size: 14px; line-height: 1.6; margin-bottom: 28px; }
 @media (max-width: 767px) {
-  .login-view { padding: 0; gap: 0; background: #f7fbff; }
+  .login-view { padding: 0; gap: 0; background: transparent; }
   .login-card {
     max-width: none;
     min-height: 100dvh;
     border: 0;
     border-radius: 0;
     box-shadow: none;
+    background: transparent;
     padding: max(32px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(32px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
   }
   .login-card > * { max-width: 440px; margin-left: auto; margin-right: auto; }
