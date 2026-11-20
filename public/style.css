@@ -1258,13 +1258,50 @@ body.premium-session .navbar, body.premium-session .brand-info h1, body.premium-
 /* Daily reservations and compact enrollment checkout. */
 [hidden] { display: none !important; }
 body.login-session { background: #f7fbff; }
-.login-view { padding: 0; min-height: 100dvh; }
-.login-card { width: 100%; max-width: none; min-height: 100dvh; border: 0; border-radius: 0; box-shadow: none; background: #f7fbff; display: flex; flex-direction: column; justify-content: center; padding: max(32px, env(safe-area-inset-top)) 24px max(32px, env(safe-area-inset-bottom)); }
-.login-card > * { width: 100%; max-width: 420px; margin-left: auto; margin-right: auto; }
-.login-logo { width: 145px; height: auto; max-height: 72px; object-fit: contain; margin-bottom: 22px; }
-.login-header h2 { font-size: 32px; }
+.login-view {
+  min-height: 100dvh;
+  padding: 48px 24px;
+  background: #eaf3fc;
+}
+.login-card {
+  width: 100%;
+  max-width: 480px;
+  min-height: auto;
+  border: 1px solid #dce8f3;
+  border-radius: 26px;
+  box-shadow: 0 16px 48px rgba(14, 36, 59, .08);
+  background: #f7fbff;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 40px;
+}
+.login-card > * { width: 100%; min-width: 0; }
+.login-header { margin-bottom: 24px; }
+.login-logo { width: 145px; height: auto; max-height: 72px; object-fit: contain; margin-bottom: 20px; }
+.login-header h2 { font-size: clamp(26px, 3vw, 32px); line-height: 1.2; }
+.login-header p { font-size: 14px; margin-top: 10px; }
 .login-card .form-control { font-size: 16px; }
 .login-notice { font-size: 14px; margin-bottom: 24px; }
+@media (max-width: 767px) {
+  .login-view { padding: 0; gap: 0; background: #f7fbff; }
+  .login-card {
+    max-width: none;
+    min-height: 100dvh;
+    border: 0;
+    border-radius: 0;
+    box-shadow: none;
+    padding: max(32px, env(safe-area-inset-top)) max(24px, env(safe-area-inset-right)) max(32px, env(safe-area-inset-bottom)) max(24px, env(safe-area-inset-left));
+  }
+  .login-card > * { max-width: 440px; margin-left: auto; margin-right: auto; }
+  .login-card .form-control, .login-card .btn { min-height: 50px; }
+}
+@media (max-width: 767px) and (max-height: 600px) {
+  .login-card { padding-top: max(20px, env(safe-area-inset-top)); padding-bottom: max(20px, env(safe-area-inset-bottom)); }
+  .login-logo { width: 112px; margin-bottom: 12px; }
+  .login-header { margin-bottom: 16px; }
+  .login-notice { margin-bottom: 16px; }
+}
 body:not(.admin-session) .navbar { flex-direction: row; flex-wrap: nowrap; align-items: center; justify-content: space-between; padding: 0 0 12px; gap: 16px; }
 body:not(.admin-session) .navbar .status-pill, body:not(.admin-session) .nav-username, body:not(.admin-session) .brand-info p { display: none !important; }
 body:not(.admin-session) .nav-actions { width: auto; flex-shrink: 0; }
