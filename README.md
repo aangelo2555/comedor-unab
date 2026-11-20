@@ -121,7 +121,7 @@ Instala las dependencias con `npm ci`. Configura `DATABASE_URL` con la conexión
 
 Cuando la tabla está vacía, se importa el archivo `database.json` existente en `DATA_DIR`, cuyo valor inicial es `data/`. Cuando PostgreSQL ya contiene datos, conserva ese estado al desplegar una imagen nueva. Las respuestas de escritura esperan confirmación del guardado. La revisión del registro impide que otra instancia sobrescriba silenciosamente un estado más reciente. Configura una sola réplica.
 
-La aplicación exige PostgreSQL en producción. El desarrollo local mantiene la compatibilidad con JSON si no se configura una conexión. Los datos que se perdieron en contenedores anteriores requieren un respaldo para recuperarse. La pantalla de respaldo de administración permite exportar y restaurar JSON.
+Si PostgreSQL aún no está configurado, la aplicación arranca con el archivo JSON de `DATA_DIR` y muestra un aviso en los logs. Ese archivo requiere un volumen persistente para sobrevivir al reemplazo del contenedor. Cuando se configura PostgreSQL, un fallo de conexión detiene el arranque para permitir que el supervisor reintente. `/healthz` informa el almacenamiento activo mediante `storage`. Los datos que se perdieron en contenedores anteriores requieren un respaldo para recuperarse. La pantalla de respaldo de administración permite exportar y restaurar JSON.
 
 ### Docker Compose
 

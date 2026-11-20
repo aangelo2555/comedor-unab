@@ -1154,7 +1154,7 @@ const server = http.createServer(async (req, res) => {
   catch { return sendJson(503, { error: 'PostgreSQL no está disponible.' }); }
 
   if (pathname === '/healthz') {
-    try { await db.health?.(); return sendJson(200, { status: 'ok' }); }
+    try { await db.health?.(); return sendJson(200, { status: 'ok', storage: db.storageMode?.() || 'unknown' }); }
     catch { return sendJson(503, { status: 'database_unavailable' }); }
   }
 
@@ -1911,7 +1911,7 @@ async function startServer() {
 
 }
 startServer().catch(() => {
-  console.error('[INICIO] No se pudo abrir la base de datos. Verifica DATABASE_URL y el servicio PostgreSQL.');
+  console.error('[INICIO] No se pudo inicializar el almacenamiento. Verifica la conexión configurada y los permisos del directorio de datos.');
   process.exitCode = 1;
   process.exit(1);
 });

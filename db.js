@@ -86,7 +86,7 @@ async function initialize() {
   const configured = Boolean(process.env.DATABASE_URL || process.env.PGHOST);
   if (!configured) {
     if (process.env.RAILWAY_ENVIRONMENT || process.env.NODE_ENV === 'production') {
-      throw new Error('Configura DATABASE_URL con el servicio PostgreSQL persistente antes de arrancar en producción.');
+      console.warn('[DB] PostgreSQL aún no está configurado. Se utilizará JSON en DATA_DIR. Conecta DATABASE_URL o monta DATA_DIR en un volumen para conservar los datos al reemplazar el contenedor.');
     }
     loadDb();
     return;
@@ -141,6 +141,8 @@ async function flush() {
     } finally { writing = null; }
   }
 }
+
+function storageMode() { return postgres ? 'postgresql' : 'json'; }
 
 async function health() { await flush(); if (postgres) await postgres.ping(); }
 
@@ -545,7 +547,7 @@ function updateSettings(newSettings) {
 }
 
 module.exports = {
-  initialize, flush, close, health, getSessions, saveSessions,
+  initialize, flush, close, health, storageMode, getSessions, saveSessions,
   ADMIN_EMAIL,
   ADMIN_PASSWORD,
   loadDb,
