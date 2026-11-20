@@ -34,7 +34,7 @@ La prioridad Premium se aplica dentro de la cola de esta aplicación. Debe evita
 
 Obtener el reglamento y las condiciones del portal y comedor, cualquier autorización escrita de UNAB, la identidad y contacto del proveedor, la configuración contractual y ubicación de Railway, los plazos reales de conservación y la política de devolución. Revisar con UNAB si existe una integración admitida para terceros y si admite un servicio remunerado.
 
-La transición a Mi Mesa incorpora `public/terminos.html` enlazado desde el login y el pie, aceptación registrada y permisos separados para recurrencia y cancelación. La identidad y contacto se configuran mediante variables. El crédito FSO sigue sin identificar a una persona o razón social. La integración y los aportes están deshabilitados por defecto mientras faltan esos datos y la habilitación correspondiente.
+La transición a Mi Mesa incorpora `public/terminos.html` enlazado desde el login y el pie, aceptación registrada y permisos separados para recurrencia y cancelación. La identidad y contacto se configuran mediante variables. El crédito FSO sigue sin identificar a una persona o razón social. El acceso del estudiante utiliza sus credenciales y su autorización de tratamiento y no depende de una activación del administrador. El canal de aportes permanece deshabilitado hasta completar su configuración.
 
 La lógica de pago por funciones se retiró. El aporte es opcional y no concede prioridad ni activaciones. Los pagos históricos mantienen su naturaleza. Las nuevas escrituras omiten contraseñas y tokens institucionales y los respaldos nuevos omiten sesiones. Las contraseñas administrativas se almacenan con scrypt. Los archivos y respaldos históricos requieren revisión independiente y no fueron eliminados.
 

@@ -20,7 +20,7 @@ if (process.env.FREE_HELP_CHILD) {
   };
   require('../server');
 } else {
-  async function launch(integrationEnabled) {
+  async function launch(profileComplete) {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'mesa-help-'));
     const database = path.join(directory, 'database.json');
     fs.writeFileSync(database, JSON.stringify({ users: [
@@ -29,8 +29,8 @@ if (process.env.FREE_HELP_CHILD) {
     const child = fork(__filename, [], { env: {
       ...process.env, FREE_HELP_CHILD: '1', DATA_DIR: directory, PORT: '0',
       DATABASE_URL: '', PGHOST: '', ADMIN_EMAIL: 'admin@example.test', ADMIN_PASSWORD: 'admin-test-only',
-      SERVICE_OPERATOR: integrationEnabled ? 'Test operator' : '', SERVICE_CONTACT_EMAIL: integrationEnabled ? 'test@example.test' : '',
-      INSTITUTION_INTEGRATION_AUTHORIZED: integrationEnabled ? 'true' : 'false', VOLUNTARY_CONTRIBUTIONS_ENABLED: 'false', UNAB_REQUEST_INTERVAL_MS: '1'
+      SERVICE_OPERATOR: profileComplete ? 'Test operator' : '', SERVICE_CONTACT_EMAIL: profileComplete ? 'test@example.test' : '',
+      VOLUNTARY_CONTRIBUTIONS_ENABLED: 'false', UNAB_REQUEST_INTERVAL_MS: '1'
     }, silent: true });
     const port = await new Promise((resolve, reject) => {
       const timer = setTimeout(() => reject(new Error('Startup timeout')), 5000);
@@ -47,13 +47,21 @@ if (process.env.FREE_HELP_CHILD) {
     } };
   }
 
-  test('institutional integration and contributions are disabled before identification and authorization', async () => {
+  test('students and admins can sign in without project identification while contributions stay disabled', async () => {
     const app = await launch(false);
     try {
       const policy = await (await app.request('/api/service-policy')).json();
-      assert.equal(policy.integrationEnabled, false);
+      assert.equal(policy.integrationEnabled, true);
       assert.equal(policy.contributionsEnabled, false);
-      assert.equal((await app.request('/api/auth/login', 'POST', { username: 'test-student', password: 'institution-secret', termsVersion: '2026-11-20', processingConsent: true })).status, 503);
+      assert.equal((await app.request('/api/auth/login', 'POST', { username: 'test-student', password: 'institution-secret' })).status, 400);
+      const login = await app.request('/api/auth/login', 'POST', { username: 'test-student', password: 'institution-secret', termsVersion: '2026-11-20', processingConsent: true });
+      assert.equal(login.status, 200);
+      const { token } = await login.json();
+      assert.equal((await app.request('/api/student/premium', 'PUT', { meals: ['CENA'], termsVersion: '2026-11-20', automationConsent: true }, token)).status, 200);
+      const adminLogin = await app.request('/api/auth/login', 'POST', { username: 'admin@example.test', password: 'admin-test-only' });
+      assert.equal(adminLogin.status, 200);
+      const admin = await adminLogin.json();
+      assert.equal((await app.request('/api/admin/users', 'GET', undefined, admin.token)).status, 200);
       assert.equal((await app.request('/api/events')).status, 401);
       assert.equal((await app.request('/api/sniper/queue')).status, 403);
     } finally { await app.close(); }

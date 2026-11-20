@@ -16,11 +16,10 @@ El crédito FSO no sustituye la identificación del responsable. Las variables s
 | --- | --- |
 | `SERVICE_OPERATOR` | Nombre o razón social del responsable real |
 | `SERVICE_CONTACT_EMAIL` | Correo operativo para soporte, privacidad y aportes |
-| `INSTITUTION_INTEGRATION_AUTHORIZED` | `true` habilita el cliente institucional cuando hay identificación y contacto. Configurar después de verificar y documentar la autorización correspondiente |
 | `VOLUNTARY_CONTRIBUTIONS_ENABLED` | `true` permite mostrar el canal de aportes cuando hay identificación y contacto |
 | `CONTRIBUTION_YAPE` | Número del receptor de los aportes, confirmado por el responsable |
 
-Los valores de habilitación son falsos por defecto. Una variable no prueba autorización ni cumplimiento legal. Antes de habilitar, el responsable debe completar el aviso de privacidad, sus datos legales y tributarios aplicables, conservación, proveedores, transferencias, atención de solicitudes y reclamaciones. No se incorporaron una identidad ni un correo ficticios. Esta transición deja el acceso de estudiantes pendiente de habilitación si esas variables faltan. El administrador puede ingresar para configurar el proyecto.
+Los estudiantes ingresan con sus propias credenciales y autorización de tratamiento, sin activación por parte del administrador ni dependencia de la identificación del proyecto. El acceso y la elegibilidad se validan con el sistema institucional. El administrador ingresa con su cuenta administrativa. El responsable debe completar el aviso de privacidad y sus obligaciones aplicables. El canal de aportes sigue deshabilitado por defecto y requiere identificación y contacto configurados.
 
 ## Funcionamiento gratuito y aportes
 

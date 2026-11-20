@@ -146,7 +146,6 @@ function emitLog(message, type = 'info') {
 
 // Bound slow upstream responses, including their bodies. Retry only reads and login.
 async function fetchUnabResponse(url, options = {}, retryable = true) {
-  if (!servicePolicy().integrationEnabled) return { ok: false, status: 503, data: { error: 'Integración institucional pendiente de habilitación.' } };
   try { await db.flush?.(); }
   catch { return { ok: false, status: 503, data: { error: 'No se pudo confirmar la persistencia local.' } }; }
   const attempts = retryable ? 2 : 1;
@@ -310,7 +309,7 @@ function isJwtExpired(token) {
 const pendingUnabAuth = new Map();
 const authWarnings = new Map();
 async function getValidUnabToken(userRecord, forceVerify = false, requestOptions = {}) {
-  if (!servicePolicy().integrationEnabled || userRecord.legalConsent?.version !== TERMS_VERSION) return null;
+  if (userRecord.legalConsent?.version !== TERMS_VERSION) return null;
   const key = userRecord.id;
   if (pendingUnabAuth.has(key)) return pendingUnabAuth.get(key);
   const pending = resolveUnabToken(userRecord, forceVerify, requestOptions);
@@ -411,7 +410,6 @@ function getNextMealOpening() {
 }
 
 function tickRailwayMasterScheduler() {
-  if (!servicePolicy().integrationEnabled) return;
   if (!globalSniper.running) {
     const queue = getAllPendingAdvanceReservations().filter(item => item.isSentinel);
     if (queue.length) startSentinelWatch({ targetMeal: queue[0].meal, targetDate: queue[0].date });
@@ -1221,7 +1219,6 @@ const server = http.createServer(async (req, res) => {
         return sendJson(401, { success: false, error: 'Contraseña de administrador incorrecta.' });
       }
     } else {
-      if (!servicePolicy().integrationEnabled) return sendJson(503, { error: 'El acceso institucional está pendiente de habilitación por el responsable.' });
       if (body.termsVersion !== TERMS_VERSION || body.processingConsent !== true) return sendJson(400, { error: 'Revisa los términos y autoriza el tratamiento para iniciar sesión.' });
       // 2. Student Login: Validate & self-register via official UNAB API
       const authResult = await authenticateStudentDirect(cleanUsername, password);
@@ -1511,7 +1508,7 @@ const server = http.createServer(async (req, res) => {
       const body = await parseJsonBody(req);
       if (!Array.isArray(body.meals) || body.meals.some(meal => !MEALS.includes(meal))) return sendJson(400, { error: 'Selecciona servicios válidos.' });
       if (body.meals.length && user.legalConsent?.version !== TERMS_VERSION) return sendJson(400, { error: 'Vuelve a iniciar sesión para revisar y autorizar el tratamiento de tus datos.' });
-      if (body.meals.length && (body.termsVersion !== TERMS_VERSION || body.automationConsent !== true || !servicePolicy().integrationEnabled)) return sendJson(400, { error: 'La automatización requiere integración habilitada y tu autorización expresa.' });
+      if (body.meals.length && (body.termsVersion !== TERMS_VERSION || body.automationConsent !== true)) return sendJson(400, { error: 'Autoriza expresamente las solicitudes diarias para activar la automatización gratuita.' });
       db.updateUser(user.id, {
         premium: { enabled: body.meals.length > 0, endDate: '9999-12-31', meals: [...new Set(body.meals)] },
         automationConsent: { version: TERMS_VERSION, acceptedAt: new Date().toISOString(), autoCancel: body.autoCancel === true, enabled: body.meals.length > 0 }
@@ -1910,7 +1907,7 @@ const server = http.createServer(async (req, res) => {
   });
 });
 
-const premiumService = createPremiumService({ db, configs: MEAL_CONFIGS, getToken: user => servicePolicy().integrationEnabled ? getValidUnabToken(user, false, { timeoutMs: 5000 }) : null, callApi: fetchComedorApi, log: emitLog, requestIntervalMs: upstreamGate.intervalMs });
+const premiumService = createPremiumService({ db, configs: MEAL_CONFIGS, getToken: user => getValidUnabToken(user, false, { timeoutMs: 5000 }), callApi: fetchComedorApi, log: emitLog, requestIntervalMs: upstreamGate.intervalMs });
 let premiumIntervalId = null;
 
 async function startServer() {
@@ -1929,8 +1926,8 @@ async function startServer() {
   console.log(`[DEPLOY] Listo para despliegue en Railway`);
   console.log(`======================================================\n`);
 
-  premiumIntervalId = setInterval(() => { if (servicePolicy().integrationEnabled) premiumService.tick().catch(error => console.error('Error en mantenimiento automático:', error)); }, 1000);
-  if (servicePolicy().integrationEnabled) premiumService.tick().catch(error => console.error('Error al iniciar automatización:', error));
+  premiumIntervalId = setInterval(() => premiumService.tick().catch(error => console.error('Error en mantenimiento automático:', error)), 1000);
+  premiumService.tick().catch(error => console.error('Error al iniciar automatización:', error));
 
   // Start the 24/7 Master Railway Scheduler
   masterSchedulerIntervalId = setInterval(tickRailwayMasterScheduler, 5000);

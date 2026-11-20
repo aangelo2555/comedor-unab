@@ -9,7 +9,7 @@ fetch('/api/service-policy').then(async response => {
   }
   document.getElementById('legalReadiness').textContent = policy.ready
     ? 'El responsable debe verificar las obligaciones aplicables y mantener actualizada esta información.'
-    : 'Pendiente de identificación y contacto del responsable. La integración y los aportes permanecen deshabilitados.';
+    : 'La identificación y el contacto del responsable están pendientes de completar. Los aportes permanecen deshabilitados. Puedes ingresar con tu propia cuenta y tu autorización de tratamiento.';
 }).catch(() => {
   document.getElementById('legalReadiness').textContent = 'No se pudo verificar el estado del proyecto. Consulta al responsable antes de utilizar la integración o realizar un aporte.';
 });

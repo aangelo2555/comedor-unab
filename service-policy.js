@@ -9,7 +9,7 @@ function servicePolicy() {
     operator,
     contact,
     ready,
-    integrationEnabled: ready && process.env.INSTITUTION_INTEGRATION_AUTHORIZED === 'true',
+    integrationEnabled: true,
     contributionsEnabled: ready && process.env.VOLUNTARY_CONTRIBUTIONS_ENABLED === 'true',
     yape: ready && process.env.VOLUNTARY_CONTRIBUTIONS_ENABLED === 'true'
       ? (process.env.CONTRIBUTION_YAPE || '').trim() : ''

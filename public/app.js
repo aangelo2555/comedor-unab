@@ -15,9 +15,6 @@ async function loadServicePolicy() {
     if (!response.ok) throw new Error('No se pudo consultar el estado del proyecto.');
     servicePolicy = await response.json();
   } catch { servicePolicy.ready = false; }
-  document.getElementById('serviceAvailability').textContent = servicePolicy.integrationEnabled
-    ? 'Integración habilitada. La disponibilidad depende de la institución.'
-    : 'Acceso institucional pendiente de habilitación. El administrador puede acceder para configurar el proyecto.';
   document.getElementById('contributionYape').textContent = servicePolicy.contributionsEnabled && servicePolicy.yape ? servicePolicy.yape : 'Pendiente de habilitación';
   document.getElementById('btnCopyYape').disabled = !servicePolicy.contributionsEnabled || !servicePolicy.yape;
   document.getElementById('contributionAvailability').textContent = servicePolicy.contributionsEnabled && servicePolicy.yape
