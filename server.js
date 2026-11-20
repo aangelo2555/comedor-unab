@@ -207,6 +207,8 @@ async function authenticateUserWithUnab(userRecord, requestOptions = {}) {
       return { success: false, status: res.status, error: data?.message || data?.error || 'UNAB no devolvió una sesión válida.' };
     }
 
+    if (db.findUserById(userRecord.id)?.legalConsent?.version !== TERMS_VERSION) return { success: false, status: 403, error: 'La autorización fue retirada.' };
+
     db.updateUser(userRecord.id, {
       unabToken: data.accessToken,
       lastLogin: new Date().toISOString()
@@ -214,7 +216,7 @@ async function authenticateUserWithUnab(userRecord, requestOptions = {}) {
 
     // Profile refresh must not delay a valid reservation session.
     fetchComedorApi('/auth/me', data.accessToken).then(profileRes => {
-      if (!profileRes.ok || !profileRes.data?.data || !db.findUserById(userRecord.id)) return;
+      if (!profileRes.ok || !profileRes.data?.data || db.findUserById(userRecord.id)?.legalConsent?.version !== TERMS_VERSION) return;
       const profile = profileRes.data.data;
       db.updateUser(userRecord.id, {
         name: profile.nombre || userRecord.name,
@@ -1451,7 +1453,7 @@ const server = http.createServer(async (req, res) => {
       const backup = db.backupDatabase();
       res.writeHead(200, {
         'Content-Type': 'application/json',
-        'Content-Disposition': `attachment; filename="comedor_unab_backup_${getTodayLimaDate(0)}.json"`
+        'Content-Disposition': `attachment; filename="mi_mesa_backup_${getTodayLimaDate(0)}.json"`
       });
       return res.end(JSON.stringify(backup, null, 2));
     }
