@@ -5,6 +5,7 @@ const os = require('node:os');
 const path = require('node:path');
 const assert = require('node:assert/strict');
 const { test } = require('node:test');
+Object.assign(process.env, { SERVICE_OPERATOR: 'Test operator', SERVICE_CONTACT_EMAIL: 'test@example.test', INSTITUTION_INTEGRATION_AUTHORIZED: 'true' });
 
 if (process.env.UNAB_TEST_CHILD) {
   let logins = 0;
@@ -84,7 +85,7 @@ if (process.env.UNAB_TEST_CHILD) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             username: 'regression-student',
-            password: 'test-only'
+            password: 'test-only', termsVersion: '2026-11-20', processingConsent: true
           })
         });
       const responses = await Promise.all([login(), login()]);

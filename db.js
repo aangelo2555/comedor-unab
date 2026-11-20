@@ -28,8 +28,8 @@ function ensureDataFolderPermissions() {
 ensureDataFolderPermissions();
 
 // Credentials configured via environment variables with safe defaults (NEVER exposed to frontend)
-const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'aangelo2555@gmail.com';
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'Dotamipasion12345';
+const ADMIN_EMAIL = process.env.ADMIN_EMAIL || 'admin';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || crypto.randomBytes(32).toString('base64url');
 
 const DEFAULT_DB = {
   users: [
@@ -47,20 +47,6 @@ const DEFAULT_DB = {
       targetMeal: 'TODAS',
       unabToken: '',
       createdAt: new Date().toISOString()
-    },
-    {
-      id: 'usr-angelo',
-      username: '222.0113.028',
-      password: 'Dotamipasion12345',
-      role: 'user',
-      name: 'SERNA SIMEON, ANGELO THOMAS',
-      dni: '76448557',
-      campus: 'LA_FLORIDA',
-      active: true,
-      autoSniper: true,
-      targetMeal: 'ALMUERZO',
-      unabToken: '',
-      createdAt: new Date().toISOString()
     }
   ],
   reservas: [],
@@ -75,6 +61,31 @@ const DEFAULT_DB = {
 };
 
 let cache = null;
+
+function hashPassword(password) {
+  if (typeof password === 'string' && password.startsWith('scrypt$')) return password;
+  const salt = crypto.randomBytes(16).toString('hex');
+  return `scrypt$${salt}$${crypto.scryptSync(String(password), salt, 64).toString('hex')}`;
+}
+
+function verifyPassword(user, password) {
+  if (!user?.password || typeof password !== 'string') return false;
+  if (!user.password.startsWith('scrypt$')) return user.password === password;
+  const [, salt, stored] = user.password.split('$');
+  if (!salt || !stored) return false;
+  const actual = crypto.scryptSync(password, salt, 64);
+  const expected = Buffer.from(stored, 'hex');
+  return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
+}
+
+// Institutional credentials stay in process memory, outside persisted state and backups.
+function persistedDocument(data) {
+  return JSON.stringify({ ...data, users: data.users.map(user => ({
+    ...user,
+    password: user.role === 'superadmin' ? hashPassword(user.password) : '',
+    unabToken: ''
+  })) });
+}
 let postgres = null;
 let version = 0;
 let persistedVersion = 0;
@@ -89,6 +100,7 @@ async function initialize() {
       console.warn('[DB] PostgreSQL aún no está configurado. Se utilizará JSON en DATA_DIR. Conecta DATABASE_URL o monta DATA_DIR en un volumen para conservar los datos al reemplazar el contenedor.');
     }
     loadDb();
+    saveDb(cache);
     return;
   }
   let store;
@@ -113,7 +125,7 @@ async function initialize() {
       loadDb();
     }
     postgres = store;
-    if (!existing) saveDb(cache);
+    saveDb(cache);
     await flush();
   } catch (error) {
     await store.close();
@@ -128,7 +140,7 @@ async function flush() {
   while (persistedVersion < version) {
     if (writing) { await writing; continue; }
     const snapshotVersion = version;
-    const snapshot = JSON.stringify(cache);
+    const snapshot = persistedDocument(cache);
     writing = postgres.write(snapshot).then(() => { persistedVersion = snapshotVersion; });
     try { await writing; }
     catch (error) {
@@ -230,7 +242,7 @@ function saveDb(data = cache) {
   }
   fs.mkdirSync(DATA_DIR, { recursive: true, mode: 0o700 });
   const tempFile = path.join(DATA_DIR, `database.json.tmp.${crypto.randomBytes(8).toString('hex')}`);
-  fs.writeFileSync(tempFile, JSON.stringify(data, null, 2), { encoding: 'utf8', mode: 0o600 });
+  fs.writeFileSync(tempFile, persistedDocument(data), { encoding: 'utf8', mode: 0o600 });
   fs.renameSync(tempFile, DB_FILE);
 }
 
@@ -295,7 +307,7 @@ function updateUser(id, updateData) {
   if (updateData.name !== undefined) u.name = updateData.name;
   if (updateData.dni !== undefined) u.dni = updateData.dni;
   if (updateData.campus !== undefined) u.campus = updateData.campus;
-  if (updateData.password) u.password = updateData.password;
+  if (updateData.password !== undefined) u.password = updateData.password;
   if (updateData.active !== undefined) u.active = updateData.active;
   if (updateData.autoSniper !== undefined) u.autoSniper = updateData.autoSniper;
   if (updateData.targetMeal) u.targetMeal = updateData.targetMeal;
@@ -303,6 +315,8 @@ function updateUser(id, updateData) {
   if (updateData.lastLogin) u.lastLogin = updateData.lastLogin;
   if (updateData.premium !== undefined) u.premium = updateData.premium;
   if (updateData.premiumRequest !== undefined) u.premiumRequest = updateData.premiumRequest;
+  if (updateData.automationConsent !== undefined) u.automationConsent = updateData.automationConsent;
+  if (updateData.legalConsent !== undefined) u.legalConsent = updateData.legalConsent;
 
   saveDb(db);
   const { password, unabToken, ...safeUser } = u;
@@ -499,7 +513,9 @@ function markAdvanceReservationConfirmed(id, ticketData) {
 
 // Backup & Restore
 function backupDatabase() {
-  return loadDb();
+  const data = JSON.parse(persistedDocument(loadDb()));
+  data.sessions = [];
+  return data;
 }
 
 function restoreDatabase(importedData) {
@@ -547,6 +563,7 @@ function updateSettings(newSettings) {
 }
 
 module.exports = {
+  verifyPassword,
   initialize, flush, close, health, storageMode, getSessions, saveSessions,
   ADMIN_EMAIL,
   ADMIN_PASSWORD,

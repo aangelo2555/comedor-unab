@@ -15,6 +15,7 @@ function fixture({ count = 1, clock = '2026-11-19T18:00:00-05:00' } = {}) {
     name: 'Student ' + id,
     active: true,
     role: 'user',
+    automationConsent: { enabled: true, autoCancel: true },
     premium: { enabled: true, endDate: '2026-11-20', meals: ['CENA'] }
   }));
   const advances = [];
@@ -77,7 +78,7 @@ function fixture({ count = 1, clock = '2026-11-19T18:00:00-05:00' } = {}) {
   };
 }
 
-test('premium priority precedes ordinary arrival order, preserving FIFO within each tier', () => {
+test('contributions and legacy premium status do not change FIFO order', () => {
   const queue = [
     { id: 'first-standard', createdAt: '2026-11-19T10:00:00Z' },
     { id: 'second-premium', premium: true, createdAt: '2026-11-19T12:00:00Z' },
@@ -85,7 +86,7 @@ test('premium priority precedes ordinary arrival order, preserving FIFO within e
   ];
   assert.deepEqual(
     queue.sort(compareQueue).map((item) => item.id),
-    ['first-premium', 'second-premium', 'first-standard']
+    ['first-standard', 'first-premium', 'second-premium']
   );
   assert.equal(
     isPremium(
@@ -170,6 +171,15 @@ test('100 cancellation candidates start early and consumed tickets are excluded 
     f.calls.filter((call) => call.options.method === 'DELETE').length,
     66
   );
+});
+
+test('automatic cancellation requires a separate affirmative choice', async () => {
+  const f = fixture({ clock: '2026-11-19T18:59:25-05:00' });
+  f.users[0].automationConsent.autoCancel = false;
+  f.tickets.push({ id: 'keep-ticket', alumnoCodigo: '0', tipoComida: 'CENA', fecha: '2026-11-19', estado: 'ACTIVA' });
+  await f.service.tick();
+  assert.equal(f.calls.filter(call => call.options?.method === 'DELETE').length, 0);
+  assert.equal(f.tickets[0].estado, 'ACTIVA');
 });
 
 test('maintenance restores recurrence on restart and avoids cancellation after service closure', async () => {

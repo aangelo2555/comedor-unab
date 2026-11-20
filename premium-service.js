@@ -6,12 +6,11 @@ function limaDate(now = Date.now()) {
 }
 
 function isPremium(user, date = limaDate()) {
-  return Boolean(user?.premium?.enabled && user.premium.endDate >= date);
+  return Boolean(user?.automationConsent?.enabled && user?.premium?.enabled && user.premium.endDate >= date);
 }
 
 function compareQueue(a, b) {
   return (
-    Number(Boolean(b.premium)) - Number(Boolean(a.premium)) ||
     String(a.createdAt || '').localeCompare(String(b.createdAt || '')) ||
     String(a.id || '').localeCompare(String(b.id || ''))
   );
@@ -79,11 +78,11 @@ function createPremiumService({
     if ((retryAfter.get(key) || 0) > now()) return;
     retryAfter.set(key, now() + 5000);
     const token = await getToken(user);
-    if (!token || now() >= close) return;
+    if (!token || now() >= close || user.automationConsent?.autoCancel !== true) return;
     const options = {
       priority: 10,
       timeoutMs: 5000,
-      canProceed: () => now() < close
+      canProceed: () => now() < close && user.automationConsent?.autoCancel === true
     };
     const check = await callApi(
       `/reservas/me?fecha=${ticket.fecha}`,

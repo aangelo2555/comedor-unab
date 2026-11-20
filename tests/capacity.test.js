@@ -5,6 +5,7 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { RequestGate, retryDelay } = require('../upstream-control');
 const { createReservationService } = require('../reservation-service');
+Object.assign(process.env, { SERVICE_OPERATOR: 'Test operator', SERVICE_CONTACT_EMAIL: 'test@example.test', INSTITUTION_INTEGRATION_AUTHORIZED: 'true' });
 
 const wait = (milliseconds) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -79,7 +80,8 @@ test('100 students across three services and two dates keep queues separate unde
     password: 'test',
     active: true,
     autoSniper: true,
-    role: 'user'
+    role: 'user',
+    legalConsent: { version: '2026-11-20' }
   }));
   const dates = ['2026-11-19', '2026-11-20'];
   const meals = ['DESAYUNO', 'ALMUERZO', 'CENA'];

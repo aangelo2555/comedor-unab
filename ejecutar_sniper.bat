@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-title FRANCOTIRADOR UNAB - 17:00:00
+title FRANCOTIRADOR Mi Mesa - 17:00:00
 
 set "NODE_CMD="
 

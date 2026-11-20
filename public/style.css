@@ -1,5 +1,5 @@
 /* --------------------------------------------------------------------------
-   COMEDOR UNAB - SKY DESIGN SYSTEM
+   MI MESA - SKY DESIGN SYSTEM
    Sky blue surfaces, generous typography and rounded navigation
    100% Responsive, Zero Emojis, Pure SVG Icons & High Contrast Typography
    -------------------------------------------------------------------------- */
@@ -629,7 +629,7 @@ select.form-control {
 }
 
 /* --------------------------------------------------------------------------
-   STUDENT PORTAL (UNAB REPLICA)
+   STUDENT PORTAL
    -------------------------------------------------------------------------- */
 .unab-header-section {
   margin-bottom: 1.25rem;
@@ -1336,6 +1336,18 @@ body:not(.admin-session) .brand-logo { width: 30px; height: 34px; }
 .premium-payment-card { display: grid; gap: 10px; text-align: center; background: #eaf3fc; border-radius: 18px; padding: 20px; margin: 16px 0; }
 .premium-payment-amount { font-size: 36px; line-height: 1.2; }
 .premium-dismiss { margin-top: 12px; }
+.consent-option { display: block; font-size: 13px; line-height: 1.6; margin: 16px 0; }
+.consent-option input { width: 18px; height: 18px; vertical-align: middle; margin-right: 6px; }
+.consent-option a { color: inherit; text-decoration: underline; }
+.project-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 16px; padding: 24px; font-size: 13px; color: #294c6a; }
+.project-footer a { color: inherit; }
+.premium-session .project-footer { color: #eaf3fc; }
+.legal-page { max-width: 820px; margin: auto; padding: 32px 20px 64px; }
+.legal-page article { background: #ffffffed; border-radius: 26px; padding: clamp(24px, 5vw, 48px); margin-top: 24px; }
+.legal-page h1 { font-size: clamp(30px, 5vw, 44px); line-height: 1.1; letter-spacing: -.04em; margin: 16px 0 20px; }
+.legal-page h2 { font-size: 21px; margin: 28px 0 12px; }
+.legal-page p { margin-bottom: 14px; line-height: 1.65; overflow-wrap: anywhere; }
+.legal-page a { color: #07406b; text-underline-offset: 3px; }
 .premium-meal-options { margin: 18px 0; }
 .premium-meal-options label { padding: 12px 16px; margin-bottom: 8px; min-height: 52px; }
 .premium-price { padding: 20px; border-radius: 18px; background: #eaf3fc; margin: 16px 0; }

@@ -4,8 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
   <meta name="theme-color" content="#6ca8ed">
-  <title>Comedor UNAB · Sistema de Reservas & Autopilot</title>
-  <link rel="icon" href="/assets/favicon.ico">
+  <title>Mi Mesa · Sistema de Reservas & Autopilot</title>
+  <link rel="icon" href="data:,">
   <link rel="stylesheet" href="/style.css">
   <script src="/qrcode.min.js"></script>
 </head>
@@ -15,21 +15,23 @@
   <div id="view-login" class="login-view">
     <div class="login-card">
       <div class="login-header">
-        <img src="/assets/logo_unab.png" alt="UNAB" class="login-logo" onerror="this.style.display='none'">
+        <p class="intro-brand">Mi Mesa</p>
         <h2>Ingresa<br>al comedor.</h2>
-        <p>Universidad Nacional de Barranca</p>
+        <p>Asistente independiente de comidas</p>
       </div>
 
-      <p class="login-notice">Usa tu cuenta institucional UNAB.<br>Tu perfil se crea al ingresar.</p>
+      <p class="login-notice">Proyecto independiente de ayuda para organizar tus comidas.<br>Realizado por FSO.</p>
+      <p id="serviceAvailability" class="login-notice" role="status"></p>
 
       <form id="loginForm">
+        <label class="consent-option"><input type="checkbox" id="processingConsent"> He leído los <a href="/terminos.html" target="_blank" rel="noopener">términos y privacidad</a> y autorizo el acceso a mi cuenta para las funciones que solicite.</label>
         <div class="form-group">
-          <label class="form-label" for="loginUsername">Usuario / Código UNAB</label>
-          <input type="text" class="form-control" id="loginUsername" placeholder="Ingresa tu código UNAB" required autocomplete="username">
+          <label class="form-label" for="loginUsername">Usuario / Código institucional</label>
+          <input type="text" class="form-control" id="loginUsername" placeholder="Ingresa tu código institucional" required autocomplete="username">
         </div>
         <div class="form-group">
           <label class="form-label" for="loginPassword">Contraseña Institucional</label>
-          <input type="password" class="form-control" id="loginPassword" placeholder="Contraseña institucional UNAB" required autocomplete="current-password">
+          <input type="password" class="form-control" id="loginPassword" placeholder="Contraseña institucional" required autocomplete="current-password">
         </div>
         <button type="submit" class="btn btn-primary btn-block" id="btnLoginSubmit">
           Ingresar al Sistema
@@ -44,9 +46,8 @@
     <!-- Top Navigation Bar -->
     <header class="navbar">
       <div class="brand">
-        <img src="/assets/logo_unab.png" alt="UNAB" class="brand-logo" onerror="this.style.display='none'">
         <div class="brand-info">
-          <h1>Comedor UNAB</h1>
+          <h1>Mi Mesa</h1>
           <p id="appSubtitle">Portal de Reservas</p>
         </div>
       </div>
@@ -86,7 +87,7 @@
     <!-- SECTION: SUPERADMIN PANEL -->
     <div id="panel-superadmin" style="display: none;">
       <section class="portal-hero">
-        <p class="hero-eyebrow">Administración · Comedor UNAB</p>
+        <p class="hero-eyebrow">Administración · Mi Mesa</p>
         <h2>Todo listo para<br>el próximo servicio.</h2>
         <p>Gestiona estudiantes, supervisa la cola y consulta las reservas desde un solo lugar.</p>
       </section>
@@ -347,7 +348,7 @@
         <p class="hero-eyebrow">Tu comedor universitario</p>
         <h2>Tu comida de hoy.</h2>
         <p>Elige tu servicio y consulta tus pases.</p>
-        <button class="btn btn-primary" id="btnPremiumOffer">Automatiza tu ciclo por S/ 9</button>
+        <button class="btn btn-primary" id="btnPremiumOffer">Automatización gratuita y aportes</button>
       </section>
       <nav class="tabs-header">
         <button class="tab-link active" data-target="student-tab-meals">
@@ -443,7 +444,7 @@
 
           <div class="card">
             <h2 class="card-title">Ficha del Estudiante</h2>
-            <p class="card-desc">Información sincronizada con el sistema académico UNAB.</p>
+            <p class="card-desc">Información sincronizada con el sistema académico institucional.</p>
             <table class="table">
               <tr><td><strong>Nombre:</strong></td><td id="fichaNombre">--</td></tr>
               <tr><td><strong>Código:</strong></td><td id="fichaCodigo">--</td></tr>
@@ -459,76 +460,80 @@
 
   <section id="panel-premium" class="premium-portal" style="display:none;">
     <div class="premium-hero">
-      <div><span class="premium-label">Comedor UNAB Premium</span>
+      <div><span class="premium-label">Mi Mesa · Ayuda gratuita</span>
         <h2>Tu ciclo,<br>bien organizado.</h2>
         <p id="premiumCycleSummary"></p>
         <button class="btn btn-primary" id="btnPremiumSettings">Elegir mis servicios</button>
       </div>
       <aside class="premium-plan-card"><span>Tu selección recurrente</span><h3 id="premiumSelectedMeals">Elige tus comidas</h3>
-        <p>Las solicitudes se preparan cada día hasta el fin de tu ciclo.</p>
-        <p>La cancelación preventiva comienza con anticipación según la cantidad de tickets y comprueba que sigan activos en UNAB.</p>
+        <p>Las solicitudes se preparan cada día mientras mantengas la selección y la integración esté habilitada.</p>
+        <p>La cancelación preventiva solo se intenta si la autorizas expresamente.</p>
       </aside>
     </div>
     <h3 class="premium-requests-title">Mis solicitudes</h3>
     <div id="premiumRequestsHolder" class="grid-3 premium-requests"></div>
     <div class="premium-section-heading"><h3>Mis pases de hoy</h3><button class="btn btn-secondary" id="btnPremiumRefresh">Actualizar</button></div>
-    <p class="premium-help">El procesamiento tiene prioridad en nuestra cola. La confirmación depende de los cupos y la respuesta de UNAB.</p>
+    <p class="premium-help">Los aportes no dan prioridad. Las solicitudes dependen de los cupos y de la confirmación de la institución.</p>
     <div id="premiumTicketsHolder"></div>
   </section>
 
   <div class="modal-overlay" id="modalPremium" role="dialog" aria-modal="true" aria-labelledby="premiumModalTitle">
     <div class="modal-card premium-modal">
-      <div class="modal-header"><h3 id="premiumModalTitle">Servicio Premium</h3><button class="modal-close-btn" type="button" aria-label="Cerrar" onclick="closeModal('modalPremium')">&times;</button></div>
+      <div class="modal-header"><h3 id="premiumModalTitle">Ayuda para tus comidas</h3><button class="modal-close-btn" type="button" aria-label="Cerrar" onclick="closeModal('modalPremium')">&times;</button></div>
       <div class="modal-body">
         <form id="formPremiumMeals">
           <section id="premiumSelectionStep">
             <h2>Tus comidas, en automático</h2>
             <ol class="premium-flow">
               <li><strong>Eliges tus comidas</strong><span>Puedes cambiarlas cuando quieras.</span></li>
-              <li><strong>Solicitamos tu reserva cada día</strong><span>Hasta el fin de tu ciclo, con prioridad en nuestra cola.</span></li>
-              <li><strong>Recibes tu pase confirmado</strong><span>Lo encuentras en tu cuenta cuando UNAB confirma.</span></li>
-              <li><strong>Intentamos cancelar antes del cierre</strong><span>Los tickets que UNAB aún muestra activos, para prevenir inasistencias.</span></li>
+              <li><strong>Solicitamos tu reserva cada día</strong><span>Gratis, mientras mantengas la selección y la integración esté habilitada.</span></li>
+              <li><strong>Recibes tu pase confirmado</strong><span>Lo encuentras en tu cuenta cuando la institución confirma.</span></li>
+              <li><strong>Intentamos cancelar antes del cierre</strong><span>Los tickets que la institución aún muestra activos, para prevenir inasistencias.</span></li>
             </ol>
-            <p class="premium-help">Reservas sujetas a cupos. Reservas y cancelaciones requieren confirmación de UNAB.</p>
-            <div class="premium-cost-summary"><strong>S/ 9 por ciclo</strong><span>Activación tras verificar el pago y definir el fin de tu ciclo.</span></div>
+            <p class="premium-help">Reservas sujetas a cupos. Reservas y cancelaciones requieren confirmación de la institución.</p>
+            <div class="premium-cost-summary"><strong>Aporte totalmente voluntario</strong><span>Ayuda a mantener y mejorar Mi Mesa. Las funciones y el orden de atención son iguales aportes o no.</span></div>
             <p id="premiumAccessMessage" role="status"></p>
             <fieldset class="premium-meal-options"><legend>Selecciona tus comidas</legend>
               <label><input type="checkbox" name="meal" value="DESAYUNO"><span>Desayuno</span></label>
               <label><input type="checkbox" name="meal" value="ALMUERZO"><span>Almuerzo</span></label>
               <label><input type="checkbox" name="meal" value="CENA"><span>Cena</span></label>
             </fieldset>
-            <button class="btn btn-primary btn-block" id="btnSavePremium" type="submit">Continuar</button>
+            <label class="consent-option"><input type="checkbox" id="automationConsent"> Autorizo solicitudes diarias para las comidas seleccionadas conforme a los <a href="/terminos.html" target="_blank" rel="noopener">términos</a>.</label>
+            <label class="consent-option"><input type="checkbox" id="autoCancelConsent"> También autorizo intentar cancelar antes del cierre los tickets que sigan activos. Entiendo que puedo perder ese cupo y que el estado puede actualizarse con retraso.</label>
+            <button class="btn btn-primary btn-block" id="btnSavePremium" type="submit">Guardar selección gratuita</button>
+            <button class="btn btn-secondary btn-block premium-dismiss" id="btnShowContribution" type="button">Quiero aportar voluntariamente</button>
           </section>
           <section id="premiumPaymentStep" hidden>
             <button class="btn btn-secondary btn-sm" id="btnPremiumBack" type="button">Volver a mis comidas</button>
-            <h2 id="premiumPaymentTitle" tabindex="-1">Pago del servicio Premium</h2>
+            <h2 id="premiumPaymentTitle" tabindex="-1">Apoya la mejora de Mi Mesa</h2>
             <p id="premiumPaymentMeals"></p>
             <div class="premium-payment-card">
-              <span>Pago único por tu ciclo</span><strong class="premium-payment-amount">S/ 9.00</strong>
-              <span>Envía por Yape al</span><strong class="yape-number">923 887 478</strong>
+              <span>Aporte opcional por el importe que elijas</span>
+              <span>Yape del responsable</span><strong class="yape-number" id="contributionYape">Pendiente de habilitación</strong>
               <button class="btn btn-secondary" type="button" id="btnCopyYape">Copiar número de Yape</button>
             </div>
             <ol class="premium-flow">
-              <li><strong>Realiza el pago en Yape</strong><span>Luego pulsa “Ya pagué”.</span></li>
-              <li><strong>Verificamos tu abono</strong><span>El administrador activa Premium hasta el fin de tu ciclo.</span></li>
+              <li><strong>Decides si quieres colaborar</strong><span>Puedes usar las funciones gratuitas sin aportar.</span></li>
+              <li><strong>Tu aporte ayuda al proyecto</strong><span>No compra cupos, prioridad ni activaciones.</span></li>
             </ol>
-            <button class="btn btn-primary btn-block" id="btnSubmitPremiumPayment" type="button">Ya pagué · Solicitar verificación</button>
+            <p id="contributionAvailability" role="status"></p>
+            <button class="btn btn-primary btn-block" id="btnSubmitPremiumPayment" type="button">Volver a mi cuenta</button>
             <p id="premiumPaymentStatus" role="status"></p>
           </section>
         </form>
-        <button class="btn btn-secondary btn-block premium-dismiss" id="btnContinueWithoutPremium" type="button" onclick="closeModal('modalPremium')">Continuar sin Premium</button>
+        <button class="btn btn-secondary btn-block premium-dismiss" id="btnContinueWithoutPremium" type="button" onclick="closeModal('modalPremium')">Continuar sin aportar</button>
       </div>
     </div>
   </div>
 
   <div class="modal-overlay" id="modalAdminPremium" role="dialog" aria-modal="true" aria-labelledby="adminPremiumTitle">
-    <div class="modal-card"><div class="modal-header"><h3 id="adminPremiumTitle">Configurar Premium</h3><button class="modal-close-btn" type="button" aria-label="Cerrar" onclick="closeModal('modalAdminPremium')">&times;</button></div>
+    <div class="modal-card"><div class="modal-header"><h3 id="adminPremiumTitle">Configurar Automatización</h3><button class="modal-close-btn" type="button" aria-label="Cerrar" onclick="closeModal('modalAdminPremium')">&times;</button></div>
       <form id="formAdminPremium" class="modal-body">
         <p id="adminPremiumStudent"></p>
         <p id="adminPremiumPaymentSummary"></p>
-        <label id="adminPremiumPaymentConfirmation" class="premium-enable" hidden><input type="checkbox" id="adminConfirmPremiumPayment"> Confirmo que recibí el pago de S/ 9 por Yape</label>
-        <label class="premium-enable"><input id="adminPremiumEnabled" type="checkbox"> Habilitar servicio premium</label>
-        <div class="form-group"><label class="form-label" for="adminPremiumEndDate">Último día del ciclo</label><input class="form-control" id="adminPremiumEndDate" type="date"></div>
+        <label id="adminPremiumPaymentConfirmation" class="premium-enable" hidden><input type="checkbox" id="adminConfirmPremiumPayment" disabled> Registro de la modalidad de pago anterior</label>
+        <label class="premium-enable"><input id="adminPremiumEnabled" type="checkbox"> Habilitar automatización gratuita autorizada por el estudiante</label>
+        <div class="form-group"><label class="form-label" for="adminPremiumEndDate">Fecha límite de la autorización gratuita</label><input class="form-control" id="adminPremiumEndDate" type="date"></div>
         <button class="btn btn-primary btn-block" type="submit">Guardar configuración</button>
       </form>
     </div>
@@ -543,12 +548,12 @@
       </div>
       <form id="formAddUser" style="padding: 1.25rem;">
         <div class="form-group">
-          <label class="form-label">Código de Estudiante UNAB</label>
-          <input type="text" class="form-control" id="addUsername" placeholder="Código UNAB del estudiante" required>
+          <label class="form-label">Código de Estudiante institucional</label>
+          <input type="text" class="form-control" id="addUsername" placeholder="Código institucional del estudiante" required>
         </div>
         <div class="form-group">
           <label class="form-label">Contraseña Institucional</label>
-          <input type="password" class="form-control" id="addPassword" placeholder="Contraseña de login UNAB" required>
+          <input type="password" class="form-control" id="addPassword" placeholder="Contraseña de login institucional" required>
         </div>
         <div class="form-group">
           <label class="form-label">Nombre Completo del Alumno</label>
@@ -614,6 +619,11 @@
   </div>
 
   <!-- Toast Shelf -->
+  <footer class="project-footer">
+    <span>Mi Mesa · Realizado por FSO</span>
+    <a href="/terminos.html">Términos y privacidad</a>
+    <button class="btn btn-secondary btn-sm" id="btnRevokeAuthorization" type="button" hidden>Retirar autorización y cerrar sesión</button>
+  </footer>
   <div class="toast-shelf" id="toastShelf"></div>
 
   <script src="/app.js"></script>

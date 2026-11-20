@@ -129,7 +129,7 @@ test('changing the scheduled service during authentication leaves the new run in
   assert.equal(vm.runInContext('sentinelStarted', context), false);
 });
 
-test('failed authentication preserves original FIFO position and premium adds a separate priority tier', () => {
+test('failed authentication preserves FIFO position regardless of legacy premium status', () => {
   const { context } = createBurstHarness();
   vm.runInContext(
     `
@@ -154,7 +154,7 @@ test('failed authentication preserves original FIFO position and premium adds a 
     "db.getAllUsers(false)[1].premium = { enabled: true, endDate: '2026-11-20', meals: ['CENA'] };",
     context
   );
-  assert.deepEqual(getNames(), ['two', 'one']);
+  assert.deepEqual(getNames(), ['one', 'two']);
   assert.equal(
     vm.runInContext(
       "getAllPendingAdvanceReservations().find(item => item.studentUsername === 'one').authPending",

@@ -10,3 +10,5 @@ Dockerfile*
 .env.*
 !.env.example
 scratch
+data
+config.json

@@ -6,6 +6,7 @@ const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
 const { Client } = require('pg');
+Object.assign(process.env, { SERVICE_OPERATOR: 'Test operator', SERVICE_CONTACT_EMAIL: 'test@example.test', INSTITUTION_INTEGRATION_AUTHORIZED: 'true' });
 
 if (process.env.PG_RESTART_CHILD) {
   const RealDate = Date;
@@ -80,6 +81,7 @@ if (process.env.PG_RESTART_CHILD) {
               username: 'legacy',
               password: 'test',
               role: 'user',
+              premiumRequest: { status: 'PENDING', reference: 'TEST-PAYMENT-123', meals: ['CENA'] },
               active: true,
               autoSniper: true
             }
@@ -151,7 +153,7 @@ if (process.env.PG_RESTART_CHILD) {
         const login = await request(base + '/api/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ username: 'legacy', password: 'test' })
+          body: JSON.stringify({ username: 'legacy', password: 'test', termsVersion: '2026-11-20', processingConsent: true })
         });
         assert.equal(login.status, 200);
         const token = (await login.json()).token;
@@ -177,7 +179,7 @@ if (process.env.PG_RESTART_CHILD) {
             reference: 'TEST-PAYMENT-123'
           })
         });
-        assert.equal(checkout.status, 200);
+        assert.equal(checkout.status, 410);
         await stop();
         fs.unlinkSync(file);
         await start();
@@ -205,9 +207,9 @@ if (process.env.PG_RESTART_CHILD) {
           state.users.find((user) => user.id === 'legacy-admin').username,
           'legacy-admin@example.test'
         );
-        assert.equal(
+        assert.match(
           state.users.find((user) => user.id === 'legacy-admin').password,
-          'test-admin-old'
+          /^scrypt\$/
         );
         assert.equal(
           state.users.some((user) => user.id === 'usr-angelo'),

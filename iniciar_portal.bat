@@ -1,6 +1,6 @@
 @echo off
 chcp 65001 >nul
-title COMEDOR UNAB - Portal y Francotirador de Reservas
+title Mi Mesa - Portal y Francotirador de Reservas
 
 set "NODE_CMD="
 
@@ -46,7 +46,7 @@ if "%NODE_CMD%"=="" (
 )
 
 echo ========================================================
-echo   COMEDOR UNIVERSITARIO UNAB - PORTAL DE ALMUERZO
+echo   COMEDOR UNIVERSITARIO Mi Mesa - PORTAL DE ALMUERZO
 echo ========================================================
 echo [OK] Runtime Node detectado: %NODE_CMD%
 echo [OK] Iniciando servidor web en http://localhost:3000...

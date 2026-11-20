@@ -10,7 +10,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 const db = require('./db');
-const { OFFER, createPaymentRequest } = require('./premium-checkout');
+const { TERMS_VERSION, servicePolicy } = require('./service-policy');
 const { MEALS, isPremium, compareQueue, validatePremium, createPremiumService } = require('./premium-service');
 const { RequestGate, retryDelay } = require('./upstream-control');
 const { createReservationService, mapWithConcurrency } = require('./reservation-service');
@@ -128,7 +128,9 @@ function broadcastSSE(event, data) {
   const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
   for (const client of sseClients) {
     try {
-      client.write(payload);
+      if (!client.viewer || !sessions.has(sessionKey(client.viewer.token))) { client.end(); sseClients.delete(client); continue; }
+      if (client.viewer.role !== 'superadmin' && event === 'log') continue;
+      client.write(client.viewer.role === 'superadmin' ? payload : `event: ${event}\ndata: {}\n\n`);
     } catch {
       sseClients.delete(client);
     }
@@ -136,6 +138,7 @@ function broadcastSSE(event, data) {
 }
 
 function emitLog(message, type = 'info') {
+  message = message.replace(/\bUNAB\b/g, 'la institución');
   const entry = db.addAuditLog(message, type);
   console.log(`[${entry.time}] [${type.toUpperCase()}] ${message}`);
   broadcastSSE('log', entry);
@@ -143,6 +146,7 @@ function emitLog(message, type = 'info') {
 
 // Bound slow upstream responses, including their bodies. Retry only reads and login.
 async function fetchUnabResponse(url, options = {}, retryable = true) {
+  if (!servicePolicy().integrationEnabled) return { ok: false, status: 503, data: { error: 'Integración institucional pendiente de habilitación.' } };
   try { await db.flush?.(); }
   catch { return { ok: false, status: 503, data: { error: 'No se pudo confirmar la persistencia local.' } }; }
   const attempts = retryable ? 2 : 1;
@@ -304,6 +308,7 @@ function isJwtExpired(token) {
 const pendingUnabAuth = new Map();
 const authWarnings = new Map();
 async function getValidUnabToken(userRecord, forceVerify = false, requestOptions = {}) {
+  if (!servicePolicy().integrationEnabled || userRecord.legalConsent?.version !== TERMS_VERSION) return null;
   const key = userRecord.id;
   if (pendingUnabAuth.has(key)) return pendingUnabAuth.get(key);
   const pending = resolveUnabToken(userRecord, forceVerify, requestOptions);
@@ -404,6 +409,7 @@ function getNextMealOpening() {
 }
 
 function tickRailwayMasterScheduler() {
+  if (!servicePolicy().integrationEnabled) return;
   if (!globalSniper.running) {
     const queue = getAllPendingAdvanceReservations().filter(item => item.isSentinel);
     if (queue.length) startSentinelWatch({ targetMeal: queue[0].meal, targetDate: queue[0].date });
@@ -593,6 +599,7 @@ function getStudentsInSentinelQueue(filterDate = null, filterMeal = null) {
 
     const student = allUsers.find(u => u.username === adv.alumnoCodigo || (adv.alumnoDni && u.dni === adv.alumnoDni));
     if (!student) continue;
+    if (adv.source === 'premium' && !isPremium(student, targetDate)) continue;
 
     // Check if student already has a confirmed active ticket for this meal on targetDate
     const alreadyConfirmed = allRes.some(r => 
@@ -632,6 +639,7 @@ function getAllPendingAdvanceReservations() {
   const list = [];
   for (const adv of allAdvance) {
     const student = allUsers.find(u => u.username === adv.alumnoCodigo || (adv.alumnoDni && u.dni === adv.alumnoDni));
+    if (adv.source === 'premium' && !isPremium(student, adv.fecha)) continue;
     const alreadyConfirmed = allRes.some(r => 
       (r.alumnoCodigo === adv.alumnoCodigo || (adv.alumnoDni && r.alumnoDni === adv.alumnoDni)) &&
       r.fecha === adv.fecha &&
@@ -870,9 +878,9 @@ async function executeMultiUserBurst() {
   // "El francotirador debe ser automático en base si hay una reserva anticipada.
   // Pero si no hay una reserva anticipada, el francotirador no se va a activar."
   const allAdvance = db.getAdvanceReservations({ fecha: runDate, status: 'ACTIVA' });
-  let candidateAdvance = allAdvance;
+  let candidateAdvance = allAdvance.filter(item => item.source !== 'premium' || isPremium(db.findUserByUsername(item.alumnoCodigo), runDate));
   if (runMeal && !['TODAS', 'INTELIGENTE'].includes(runMeal)) {
-    candidateAdvance = allAdvance.filter(a => a.tipoComida.toUpperCase() === runMeal.toUpperCase());
+    candidateAdvance = candidateAdvance.filter(a => a.tipoComida.toUpperCase() === runMeal.toUpperCase());
   }
 
   if (candidateAdvance.length === 0) {
@@ -889,7 +897,7 @@ async function executeMultiUserBurst() {
   const queueOrder = [...advanceUsernames];
   const activeCandidates = db.getAllUsers(false).filter(u => 
     u.active && advanceUsernames.has(u.username) && u.role !== 'superadmin'
-  ).sort((a, b) => Number(isPremium(b, runDate)) - Number(isPremium(a, runDate)) || queueOrder.indexOf(a.username) - queueOrder.indexOf(b.username));
+  ).sort((a, b) => queueOrder.indexOf(a.username) - queueOrder.indexOf(b.username));
 
   if (activeCandidates.length === 0) {
     emitLog('No hay alumnos activos vinculados a las reservas anticipadas encontradas.', 'warning');
@@ -1146,9 +1154,12 @@ const server = http.createServer(async (req, res) => {
     try { await db.flush?.(); }
     catch { status = 503; data = { error: 'No se pudo confirmar el guardado. Vuelve a intentarlo.' }; }
     if (res.destroyed || res.writableEnded) return;
+    if (typeof data?.error === 'string') data = { ...data, error: data.error.replace(/\bUNAB\b/g, 'la institución') };
     res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
     res.end(JSON.stringify(data));
   };
+
+  if (pathname === '/api/service-policy' && req.method === 'GET') return sendJson(200, servicePolicy());
 
   try { await db.flush?.(); }
   catch { return sendJson(503, { error: 'PostgreSQL no está disponible.' }); }
@@ -1160,6 +1171,9 @@ const server = http.createServer(async (req, res) => {
 
   // --- SSE STREAM ---
   if (pathname === '/api/events') {
+    const viewer = getSessionFromReq(req);
+    if (!viewer) return sendJson(401, { error: 'Autenticación requerida.' });
+    res.viewer = viewer;
     res.writeHead(200, {
       'Content-Type': 'text/event-stream',
       'Cache-Control': 'no-cache',
@@ -1201,15 +1215,17 @@ const server = http.createServer(async (req, res) => {
 
     // 1. SuperAdmin Login
     if (user && user.role === 'superadmin') {
-      if (user.password !== password) {
+      if (!db.verifyPassword(user, password)) {
         return sendJson(401, { success: false, error: 'Contraseña de administrador incorrecta.' });
       }
     } else {
+      if (!servicePolicy().integrationEnabled) return sendJson(503, { error: 'El acceso institucional está pendiente de habilitación por el responsable.' });
+      if (body.termsVersion !== TERMS_VERSION || body.processingConsent !== true) return sendJson(400, { error: 'Revisa los términos y autoriza el tratamiento para iniciar sesión.' });
       // 2. Student Login: Validate & self-register via official UNAB API
       const authResult = await authenticateStudentDirect(cleanUsername, password);
       if (!authResult.success) {
         // Fallback: If user already exists in DB and credentials match stored record
-        if (user && user.password === password) {
+        if (user && db.verifyPassword(user, password)) {
           // Allow login using stored account
         } else {
           return sendJson(authResult.status >= 500 || authResult.status === 429 ? 503 : 401, { success: false, error: authResult.error || 'Credenciales no válidas en UNAB.' });
@@ -1251,6 +1267,8 @@ const server = http.createServer(async (req, res) => {
       return sendJson(403, { success: false, error: 'Tu cuenta ha sido desactivada por el administrador.' });
     }
 
+    if (user.role !== 'superadmin') db.updateUser(user.id, { legalConsent: { version: TERMS_VERSION, acceptedAt: new Date().toISOString(), processing: true } });
+
     // Create session token
     const token = crypto.randomBytes(24).toString('hex');
     sessions.set(sessionKey(token), {
@@ -1264,6 +1282,7 @@ const server = http.createServer(async (req, res) => {
     db.addAuditLog(`Inicio de sesión de ${user.username} (${user.role}).`, 'info');
 
     const { password: _, unabToken: __, ...safeUser } = user;
+    res.setHeader('Set-Cookie', `app-session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400${process.env.NODE_ENV === 'production' ? '; Secure' : ''}`);
     return sendJson(200, {
       success: true,
       token,
@@ -1287,11 +1306,25 @@ const server = http.createServer(async (req, res) => {
   if (pathname === '/api/auth/logout' && req.method === 'POST') {
     const session = getSessionFromReq(req);
     if (session) { sessions.delete(sessionKey(session.token)); db.saveSessions?.([...sessions]); }
+    res.setHeader('Set-Cookie', 'app-session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');
     return sendJson(200, { success: true });
   }
 
   // --- SUPERADMIN ROUTES ---
   const session = getSessionFromReq(req);
+  if (pathname.startsWith('/api/sniper/') && session?.role !== 'superadmin') return sendJson(403, { error: 'Acceso de administrador requerido.' });
+
+  if (pathname === '/api/student/authorization' && req.method === 'DELETE') {
+    if (!session || session.role === 'superadmin') return sendJson(403, { error: 'Acceso de estudiante requerido.' });
+    const user = db.findUserById(session.userId);
+    if (!user) return sendJson(404, { error: 'Usuario no encontrado.' });
+    db.updateUser(user.id, { password: '', unabToken: '', autoSniper: false, premium: { enabled: false, meals: [], endDate: '' }, legalConsent: null, automationConsent: { enabled: false, autoCancel: false, revokedAt: new Date().toISOString() } });
+    for (const item of db.getAdvanceReservations({ alumnoCodigo: user.username, status: 'ACTIVA' })) db.cancelAdvanceReservation(item.id);
+    for (const [key, value] of sessions) if (value.userId === user.id) sessions.delete(key);
+    db.saveSessions([...sessions]);
+    res.setHeader('Set-Cookie', 'app-session=; HttpOnly; SameSite=Strict; Path=/; Max-Age=0');
+    return sendJson(200, { success: true });
+  }
 
   if (pathname.startsWith('/api/admin/')) {
     if (!session || session.role !== 'superadmin') {
@@ -1305,13 +1338,9 @@ const server = http.createServer(async (req, res) => {
       try {
         const body = await parseJsonBody(req);
         const plan = validatePremium(body);
-        const payment = user.premiumRequest;
-        if (plan.enabled && payment?.status === 'PENDING' && body.confirmPayment !== true) {
-          return sendJson(400, { error: 'Confirma la recepción del pago antes de activar Premium.' });
-        }
-        if (plan.enabled) plan.meals = payment?.status === 'PENDING' ? payment.meals : user.premium?.meals || [];
-        db.updateUser(user.id, { premium: plan,
-          ...(plan.enabled && payment?.status === 'PENDING' ? { premiumRequest: { ...payment, status: 'APPROVED', approvedAt: new Date().toISOString(), approvedBy: session.userId } } : {}) });
+        if (plan.enabled && !user.automationConsent?.acceptedAt) return sendJson(400, { error: 'El estudiante debe autorizar primero la automatización gratuita.' });
+        plan.meals = user.premium?.meals || [];
+        db.updateUser(user.id, { premium: plan });
         await premiumService.tick();
         return sendJson(200, { success: true, premium: plan });
       } catch (error) { return sendJson(400, { error: error.message }); }
@@ -1379,7 +1408,7 @@ const server = http.createServer(async (req, res) => {
       const userId = pathname.replace('/api/admin/users/', '');
       const body = await parseJsonBody(req);
       try {
-        if (body.premium !== undefined || body.premiumRequest !== undefined) return sendJson(400, { error: 'Usa la configuración premium del alumno.' });
+        if (body.premium !== undefined || body.premiumRequest !== undefined || body.legalConsent !== undefined || body.automationConsent !== undefined) return sendJson(400, { error: 'Usa los controles específicos. Las autorizaciones deben registrarse por el estudiante.' });
         const updated = db.updateUser(userId, body);
         return sendJson(200, { success: true, user: updated });
       } catch (e) {
@@ -1469,14 +1498,7 @@ const server = http.createServer(async (req, res) => {
   // --- STUDENT ADVANCE RESERVATION ROUTES ---
 
   if (pathname === '/api/student/premium/checkout' && req.method === 'POST') {
-    if (!session) return sendJson(401, { error: 'Autenticación requerida' });
-    const user = db.findUserById(session.userId);
-    if (!user || user.role === 'superadmin') return sendJson(403, { error: 'Acceso de estudiante requerido' });
-    try {
-      const paymentRequest = createPaymentRequest(await parseJsonBody(req), user.premiumRequest);
-      db.updateUser(user.id, { premiumRequest: paymentRequest });
-      return sendJson(200, { success: true, paymentRequest });
-    } catch (error) { return sendJson(400, { error: error.message }); }
+    return sendJson(410, { error: 'La modalidad de pago por funciones fue retirada. Los aportes voluntarios no activan funciones.' });
   }
 
   if (pathname === '/api/student/premium' && ['GET', 'PUT'].includes(req.method)) {
@@ -1484,10 +1506,14 @@ const server = http.createServer(async (req, res) => {
     const user = db.findUserById(session.userId);
     if (!user || user.role === 'superadmin') return sendJson(403, { error: 'Acceso de estudiante requerido' });
     if (req.method === 'PUT') {
-      if (!isPremium(user)) return sendJson(403, { error: 'El administrador debe habilitar tu servicio premium.' });
       const body = await parseJsonBody(req);
       if (!Array.isArray(body.meals) || body.meals.some(meal => !MEALS.includes(meal))) return sendJson(400, { error: 'Selecciona servicios válidos.' });
-      db.updateUser(user.id, { premium: { ...user.premium, meals: [...new Set(body.meals)] } });
+      if (body.meals.length && user.legalConsent?.version !== TERMS_VERSION) return sendJson(400, { error: 'Vuelve a iniciar sesión para revisar y autorizar el tratamiento de tus datos.' });
+      if (body.meals.length && (body.termsVersion !== TERMS_VERSION || body.automationConsent !== true || !servicePolicy().integrationEnabled)) return sendJson(400, { error: 'La automatización requiere integración habilitada y tu autorización expresa.' });
+      db.updateUser(user.id, {
+        premium: { enabled: body.meals.length > 0, endDate: '9999-12-31', meals: [...new Set(body.meals)] },
+        automationConsent: { version: TERMS_VERSION, acceptedAt: new Date().toISOString(), autoCancel: body.autoCancel === true, enabled: body.meals.length > 0 }
+      });
       await premiumService.tick();
     }
     const today = getTodayLimaDate(0);
@@ -1499,7 +1525,7 @@ const server = http.createServer(async (req, res) => {
         return { id: item.id, meal: item.tipoComida, date: item.fecha, status: ticket?.estado || item.status,
           authPending: item.status === 'ACTIVA' && authWarnings.has(user.id) };
       });
-    return sendJson(200, { success: true, premium: user.premium || { enabled: false, meals: [], endDate: '' }, active: isPremium(user), appointments, offer: OFFER, paymentRequest: user.premiumRequest || null });
+    return sendJson(200, { success: true, premium: user.premium || { enabled: false, meals: [], endDate: '' }, active: isPremium(user), appointments, automationConsent: user.automationConsent || null, paymentRequest: user.premiumRequest || null });
   }
 
   // GET /api/student/advance-reservations?fecha=YYYY-MM-DD
@@ -1882,7 +1908,7 @@ const server = http.createServer(async (req, res) => {
   });
 });
 
-const premiumService = createPremiumService({ db, configs: MEAL_CONFIGS, getToken: user => getValidUnabToken(user, false, { priority: 10, timeoutMs: 5000 }), callApi: fetchComedorApi, log: emitLog, requestIntervalMs: upstreamGate.intervalMs });
+const premiumService = createPremiumService({ db, configs: MEAL_CONFIGS, getToken: user => servicePolicy().integrationEnabled ? getValidUnabToken(user, false, { timeoutMs: 5000 }) : null, callApi: fetchComedorApi, log: emitLog, requestIntervalMs: upstreamGate.intervalMs });
 let premiumIntervalId = null;
 
 async function startServer() {
@@ -1893,7 +1919,7 @@ async function startServer() {
   server.listen(PORT, '0.0.0.0', () => {
   const mem = process.memoryUsage();
   console.log(`\n======================================================`);
-  console.log(`[SISTEMA] COMEDOR UNAB - SAAS & RESERVAS`);
+  console.log(`[SISTEMA] MI MESA - AYUDA GRATUITA`);
   console.log(`======================================================`);
   console.log(`[HTTP] Servidor activo en puerto: ${PORT} (0.0.0.0)`);
   console.log(`[MEM] Consumo inicial de RAM: ${(mem.rss / 1024 / 1024).toFixed(2)} MB`);
@@ -1901,8 +1927,8 @@ async function startServer() {
   console.log(`[DEPLOY] Listo para despliegue en Railway`);
   console.log(`======================================================\n`);
 
-  premiumIntervalId = setInterval(() => premiumService.tick().catch(error => console.error('Error en mantenimiento premium:', error)), 1000);
-  premiumService.tick().catch(error => console.error('Error al iniciar premium:', error));
+  premiumIntervalId = setInterval(() => { if (servicePolicy().integrationEnabled) premiumService.tick().catch(error => console.error('Error en mantenimiento automático:', error)); }, 1000);
+  if (servicePolicy().integrationEnabled) premiumService.tick().catch(error => console.error('Error al iniciar automatización:', error));
 
   // Start the 24/7 Master Railway Scheduler
   masterSchedulerIntervalId = setInterval(tickRailwayMasterScheduler, 5000);

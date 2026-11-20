@@ -1,7 +1,7 @@
 {
-  "name": "comedor-unab-sistema",
+  "name": "mi-mesa",
   "version": "1.0.0",
-  "description": "Sistema de reservas de almuerzo y francotirador para Comedor UNAB desplegable en Railway",
+  "description": "Mi Mesa, ayuda gratuita para organizar comidas con aportes voluntarios independientes",
   "main": "server.js",
   "scripts": {
     "start": "node server.js"
@@ -9,7 +9,7 @@
   "engines": {
     "node": ">=18.0.0"
   },
-  "author": "Angelo Thomas Serna Simeon",
+  "author": "FSO",
   "license": "ISC",
   "private": true,
   "dependencies": {
