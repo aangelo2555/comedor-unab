@@ -12,13 +12,13 @@ function createPaymentRequest(body, previous) {
   }
   const reference =
     typeof body.reference === 'string' ? body.reference.trim() : '';
-  if (reference.length < 3 || reference.length > 80)
-    throw new Error('Indica el número de operación de Yape.');
+  if (reference && (reference.length < 3 || reference.length > 80))
+    throw new Error('El número de operación de Yape debe tener entre 3 y 80 caracteres.');
   return {
     id: previous?.status === 'PENDING' ? previous.id : crypto.randomUUID(),
     status: 'PENDING',
     meals: [...new Set(body.meals)],
-    reference,
+    reference: reference || (previous?.status === 'PENDING' ? previous.reference || '' : ''),
     ...OFFER,
     createdAt:
       previous?.status === 'PENDING'

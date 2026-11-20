@@ -1224,8 +1224,7 @@ function updatePremiumModal() {
   document.getElementById('premiumPaymentStep').hidden = true;
   document.getElementById('btnSavePremium').disabled = false;
   document.getElementById('btnSavePremium').textContent = premiumActive ? 'Guardar mis servicios' : 'Continuar';
-  document.getElementById('premiumPaymentReference').value = premiumPaymentRequest?.reference || '';
-  document.getElementById('premiumPaymentReference').disabled = true;
+  document.getElementById('btnContinueWithoutPremium').textContent = premiumActive ? 'Volver a mi cuenta' : 'Continuar sin Premium';
   document.getElementById('premiumPaymentStatus').textContent = '';
 }
 
@@ -1248,7 +1247,6 @@ document.getElementById('formPremiumMeals').addEventListener('submit', async eve
     document.getElementById('premiumPaymentMeals').textContent = meals.map(meal => premiumMealNames[meal]).join(' · ');
     document.getElementById('premiumSelectionStep').hidden = true;
     document.getElementById('premiumPaymentStep').hidden = false;
-    document.getElementById('premiumPaymentReference').disabled = false;
     document.getElementById('premiumPaymentTitle').focus({ preventScroll: true });
     document.querySelector('#modalPremium .modal-card').scrollTop = 0;
     return;
@@ -1267,7 +1265,6 @@ document.getElementById('formPremiumMeals').addEventListener('submit', async eve
 });
 
 document.getElementById('btnPremiumBack').addEventListener('click', () => {
-  document.getElementById('premiumPaymentReference').disabled = true;
   document.getElementById('premiumSelectionStep').hidden = false;
   document.getElementById('premiumPaymentStep').hidden = true;
   document.getElementById('btnSavePremium').focus({ preventScroll: true });
@@ -1278,12 +1275,10 @@ document.getElementById('btnCopyYape').addEventListener('click', async () => {
   catch { showToast('Número de Yape: 923887478', 'info'); }
 });
 document.getElementById('btnSubmitPremiumPayment').addEventListener('click', async () => {
-  const input = document.getElementById('premiumPaymentReference');
-  if (input.value.trim().length < 3) { input.setCustomValidity('Ingresa el número de operación de Yape.'); input.reportValidity(); input.setCustomValidity(''); return; }
   const button = document.getElementById('btnSubmitPremiumPayment');
   button.disabled = true;
   try {
-    const response = await fetch('/api/student/premium/checkout', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ meals: selectedPremiumMeals(), reference: input.value.trim() }) });
+    const response = await fetch('/api/student/premium/checkout', { method: 'POST', headers: authHeaders(), body: JSON.stringify({ meals: selectedPremiumMeals() }) });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'No se pudo enviar el pago.');
     premiumPaymentRequest = data.paymentRequest;
@@ -1300,7 +1295,7 @@ function configureUserPremium(id) {
   const payment = user.premiumRequest;
   const pending = payment?.status === 'PENDING';
   document.getElementById('adminPremiumPaymentSummary').textContent = pending
-    ? `Pago por verificar: S/ 9.00 · Operación ${payment.reference} · ${payment.meals.map(meal => premiumMealNames[meal]).join(' · ')}` : '';
+    ? `Pago por verificar: S/ 9.00 · ${payment.reference ? `Operación ${payment.reference} · ` : ''}${payment.meals.map(meal => premiumMealNames[meal]).join(' · ')}` : '';
   document.getElementById('adminPremiumPaymentConfirmation').hidden = !pending;
   document.getElementById('adminConfirmPremiumPayment').checked = false;
   const enabled = document.getElementById('adminPremiumEnabled');

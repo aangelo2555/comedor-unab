@@ -489,10 +489,15 @@
       <div class="modal-body">
         <form id="formPremiumMeals">
           <section id="premiumSelectionStep">
-            <h2>¿Cómo te ayuda Premium?</h2>
-            <p>Elige tus comidas y el servicio solicitará su reserva cada día hasta el fin de tu ciclo, sin que tengas que entrar a la página. Tus solicitudes tienen prioridad en nuestra cola y tus pases confirmados aparecen en tu cuenta.</p>
-            <p>Antes del cierre de cada comida, el servicio intenta cancelar los tickets que UNAB aún muestra como activos para prevenir inasistencias. Las reservas y cancelaciones dependen de los cupos y de la confirmación de UNAB.</p>
-            <p>El servicio cuesta S/ 9 por ciclo. Se activa cuando el administrador verifica tu pago y configura la fecha de fin. Puedes cambiar tus comidas después.</p>
+            <h2>Tus comidas, en automático</h2>
+            <ol class="premium-flow">
+              <li><strong>Eliges tus comidas</strong><span>Puedes cambiarlas cuando quieras.</span></li>
+              <li><strong>Solicitamos tu reserva cada día</strong><span>Hasta el fin de tu ciclo, con prioridad en nuestra cola.</span></li>
+              <li><strong>Recibes tu pase confirmado</strong><span>Lo encuentras en tu cuenta cuando UNAB confirma.</span></li>
+              <li><strong>Intentamos cancelar antes del cierre</strong><span>Los tickets que UNAB aún muestra activos, para prevenir inasistencias.</span></li>
+            </ol>
+            <p class="premium-help">Reservas sujetas a cupos. Reservas y cancelaciones requieren confirmación de UNAB.</p>
+            <div class="premium-cost-summary"><strong>S/ 9 por ciclo</strong><span>Activación tras verificar el pago y definir el fin de tu ciclo.</span></div>
             <p id="premiumAccessMessage" role="status"></p>
             <fieldset class="premium-meal-options"><legend>Selecciona tus comidas</legend>
               <label><input type="checkbox" name="meal" value="DESAYUNO"><span>Desayuno</span></label>
@@ -505,17 +510,20 @@
             <button class="btn btn-secondary btn-sm" id="btnPremiumBack" type="button">Volver a mis comidas</button>
             <h2 id="premiumPaymentTitle" tabindex="-1">Pago del servicio Premium</h2>
             <p id="premiumPaymentMeals"></p>
-            <div class="premium-price"><span>Total por el servicio del ciclo</span><strong>S/ 9.00</strong></div>
-            <p>Realiza el pago mediante Yape al</p>
-            <p class="yape-number">923 887 478</p>
-            <button class="btn btn-secondary" type="button" id="btnCopyYape">Copiar número</button>
-            <p>Después de realizar el pago, ingresa el número de operación para enviarlo a revisión.</p>
-            <div class="form-group"><label class="form-label" for="premiumPaymentReference">Número de operación de Yape</label><input class="form-control" id="premiumPaymentReference" type="text" minlength="3" maxlength="80" autocomplete="off"></div>
-            <p class="premium-help">El administrador verificará el pago y activará tus comidas hasta el fin de tu ciclo. La cancelación se anticipa según la cola y requiere confirmación de UNAB.</p>
-            <button class="btn btn-primary btn-block" id="btnSubmitPremiumPayment" type="button">Enviar pago a revisión</button>
+            <div class="premium-payment-card">
+              <span>Pago único por tu ciclo</span><strong class="premium-payment-amount">S/ 9.00</strong>
+              <span>Envía por Yape al</span><strong class="yape-number">923 887 478</strong>
+              <button class="btn btn-secondary" type="button" id="btnCopyYape">Copiar número de Yape</button>
+            </div>
+            <ol class="premium-flow">
+              <li><strong>Realiza el pago en Yape</strong><span>Luego pulsa “Ya pagué”.</span></li>
+              <li><strong>Verificamos tu abono</strong><span>El administrador activa Premium hasta el fin de tu ciclo.</span></li>
+            </ol>
+            <button class="btn btn-primary btn-block" id="btnSubmitPremiumPayment" type="button">Ya pagué · Solicitar verificación</button>
             <p id="premiumPaymentStatus" role="status"></p>
           </section>
         </form>
+        <button class="btn btn-secondary btn-block premium-dismiss" id="btnContinueWithoutPremium" type="button" onclick="closeModal('modalPremium')">Continuar sin Premium</button>
       </div>
     </div>
   </div>
