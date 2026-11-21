@@ -1339,6 +1339,30 @@ body:not(.admin-session) .brand-logo { width: 30px; height: 34px; }
 .consent-option { display: block; font-size: 13px; line-height: 1.6; margin: 16px 0; }
 .consent-option input { width: 18px; height: 18px; vertical-align: middle; margin-right: 6px; }
 .consent-option a { color: inherit; text-decoration: underline; }
+.consent-option { display: flex; align-items: flex-start; gap: 10px; cursor: pointer; }
+.consent-option input, .premium-meal-options input {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: 0 0 20px;
+  width: 20px;
+  height: 20px;
+  margin: 2px 0 0;
+  border: 1.5px solid #52697d;
+  border-radius: 50%;
+  background: #fff;
+  cursor: pointer;
+}
+.consent-option input:checked, .premium-meal-options input:checked { background: #102538; border-color: #102538; box-shadow: inset 0 0 0 4px #fff; }
+.consent-option input:focus-visible, .premium-meal-options input:focus-visible { outline: 3px solid #2563eb; outline-offset: 3px; }
+.login-card .consent-option { margin: 20px 0; }
+.modal-card button { border-radius: 999px; }
+.modal-card .modal-close-btn { width: 36px; height: 36px; min-width: 36px; min-height: 36px; padding: 0; display: grid; place-items: center; border-radius: 50%; background: #ffffff14; }
+.contribution-invitation { padding-bottom: 18px; margin-bottom: 18px; border-bottom: 1px solid #dce7f2; }
+.contribution-invitation h2 { margin-bottom: 8px; }
+.premium-modal .premium-meal-options { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; margin: 16px 0; }
+.premium-modal .premium-meal-options legend { margin-bottom: 12px; }
+.premium-modal .premium-meal-options label { flex-direction: column; justify-content: center; gap: 6px; padding: 10px 4px; margin: 0; border-radius: 20px; font-size: 13px; }
+#premiumAccessMessage:empty, #premiumPaymentMeals:empty, #premiumPaymentStatus:empty { display: none; }
 .project-footer { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 16px; padding: 24px; font-size: 13px; color: #294c6a; }
 .project-footer a { color: inherit; }
 .premium-session .project-footer { color: #eaf3fc; }

@@ -18,8 +18,8 @@ async function loadServicePolicy() {
   document.getElementById('contributionYape').textContent = servicePolicy.contributionsEnabled && servicePolicy.yape ? servicePolicy.yape : 'Pendiente de habilitación';
   document.getElementById('btnCopyYape').disabled = !servicePolicy.contributionsEnabled || !servicePolicy.yape;
   document.getElementById('contributionAvailability').textContent = servicePolicy.contributionsEnabled && servicePolicy.yape
-    ? 'Realizado por FSO. Aporte voluntario para el mantenimiento y la mejora del proyecto.'
-    : 'Los aportes estarán disponibles cuando el responsable complete su identificación y contacto.';
+    ? 'Aporte voluntario para mejorar Mi Mesa.'
+    : 'Aportes pendientes de habilitación. Puedes continuar gratis.';
 }
 let modalPreviousFocus = null;
 let eventStream = null;
@@ -1244,7 +1244,7 @@ async function loadPremiumState(showOffer = false) {
 function updatePremiumModal() {
   const plan = currentAuth?.premium || { meals: [] };
   const meals = premiumActive ? plan.meals : premiumPaymentRequest?.meals || [];
-  document.getElementById('premiumAccessMessage').textContent = 'Selecciona las comidas que quieres solicitar. Quita todas para detener la recurrencia.';
+  document.getElementById('premiumAccessMessage').textContent = premiumActive ? 'Quita todas las comidas para detener las solicitudes.' : '';
   document.getElementById('automationConsent').checked = currentAuth?.automationConsent?.enabled === true;
   document.getElementById('autoCancelConsent').checked = currentAuth?.automationConsent?.autoCancel === true;
   document.querySelectorAll('#formPremiumMeals input[name="meal"]').forEach(input => {
@@ -1254,7 +1254,7 @@ function updatePremiumModal() {
   document.getElementById('premiumSelectionStep').hidden = false;
   document.getElementById('premiumPaymentStep').hidden = true;
   document.getElementById('btnSavePremium').disabled = false;
-  document.getElementById('btnSavePremium').textContent = 'Guardar selección gratuita';
+  document.getElementById('btnSavePremium').textContent = 'Guardar comidas · Gratis';
   document.getElementById('btnContinueWithoutPremium').textContent = 'Continuar sin aportar';
   document.getElementById('premiumPaymentStatus').textContent = '';
 }

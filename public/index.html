@@ -17,23 +17,21 @@
       <div class="login-header">
         <p class="intro-brand">Mi Mesa</p>
         <h2>Ingresa<br>al comedor.</h2>
-        <p>Asistente independiente de comidas</p>
+        <p>Organiza tus comidas.</p>
       </div>
 
-      <p class="login-notice">Proyecto independiente de ayuda para organizar tus comidas.<br>Realizado por FSO.</p>
-
       <form id="loginForm">
-        <label class="consent-option"><input type="checkbox" id="processingConsent"> He leído los <a href="/terminos.html" target="_blank" rel="noopener">términos y privacidad</a> y autorizo el acceso a mi cuenta para las funciones que solicite.</label>
         <div class="form-group">
-          <label class="form-label" for="loginUsername">Usuario / Código institucional</label>
-          <input type="text" class="form-control" id="loginUsername" placeholder="Ingresa tu código institucional" required autocomplete="username">
+          <label class="form-label" for="loginUsername">Código institucional</label>
+          <input type="text" class="form-control" id="loginUsername" placeholder="Tu código de estudiante" required autocomplete="username">
         </div>
         <div class="form-group">
-          <label class="form-label" for="loginPassword">Contraseña Institucional</label>
-          <input type="password" class="form-control" id="loginPassword" placeholder="Contraseña institucional" required autocomplete="current-password">
+          <label class="form-label" for="loginPassword">Contraseña</label>
+          <input type="password" class="form-control" id="loginPassword" placeholder="Tu contraseña institucional" required autocomplete="current-password">
         </div>
+        <label class="consent-option"><input type="checkbox" id="processingConsent"><span>Acepto los <a href="/terminos.html" target="_blank" rel="noopener">términos y privacidad</a> y autorizo el uso de mi cuenta.</span></label>
         <button type="submit" class="btn btn-primary btn-block" id="btnLoginSubmit">
-          Ingresar al Sistema
+          Ingresar
         </button>
       </form>
     </div>
@@ -482,39 +480,32 @@
       <div class="modal-body">
         <form id="formPremiumMeals">
           <section id="premiumSelectionStep">
-            <h2>Tus comidas, en automático</h2>
-            <ol class="premium-flow">
-              <li><strong>Eliges tus comidas</strong><span>Puedes cambiarlas cuando quieras.</span></li>
-              <li><strong>Solicitamos tu reserva cada día</strong><span>Gratis, mientras mantengas la selección y la integración esté habilitada.</span></li>
-              <li><strong>Recibes tu pase confirmado</strong><span>Lo encuentras en tu cuenta cuando la institución confirma.</span></li>
-              <li><strong>Intentamos cancelar antes del cierre</strong><span>Los tickets que la institución aún muestra activos, para prevenir inasistencias.</span></li>
-            </ol>
-            <p class="premium-help">Reservas sujetas a cupos. Reservas y cancelaciones requieren confirmación de la institución.</p>
-            <div class="premium-cost-summary"><strong>Aporte totalmente voluntario</strong><span>Ayuda a mantener y mejorar Mi Mesa. Las funciones y el orden de atención son iguales aportes o no.</span></div>
+            <div class="contribution-invitation">
+              <h2>Ayúdanos a mejorar</h2>
+              <p>Tu aporte mantiene Mi Mesa. Es voluntario y las funciones y atención son iguales para todos.</p>
+              <button class="btn btn-primary btn-block" id="btnShowContribution" type="button">Quiero aportar</button>
+            </div>
+            <p class="premium-help">Solicitamos tus comidas cada día. La confirmación depende de los cupos.</p>
             <p id="premiumAccessMessage" role="status"></p>
-            <fieldset class="premium-meal-options"><legend>Selecciona tus comidas</legend>
+            <fieldset class="premium-meal-options"><legend>Tus comidas automáticas</legend>
               <label><input type="checkbox" name="meal" value="DESAYUNO"><span>Desayuno</span></label>
               <label><input type="checkbox" name="meal" value="ALMUERZO"><span>Almuerzo</span></label>
               <label><input type="checkbox" name="meal" value="CENA"><span>Cena</span></label>
             </fieldset>
-            <label class="consent-option"><input type="checkbox" id="automationConsent"> Autorizo solicitudes diarias para las comidas seleccionadas conforme a los <a href="/terminos.html" target="_blank" rel="noopener">términos</a>.</label>
-            <label class="consent-option"><input type="checkbox" id="autoCancelConsent"> También autorizo intentar cancelar antes del cierre los tickets que sigan activos. Entiendo que puedo perder ese cupo y que el estado puede actualizarse con retraso.</label>
-            <button class="btn btn-primary btn-block" id="btnSavePremium" type="submit">Guardar selección gratuita</button>
-            <button class="btn btn-secondary btn-block premium-dismiss" id="btnShowContribution" type="button">Quiero aportar voluntariamente</button>
+            <label class="consent-option"><input type="checkbox" id="automationConsent"><span>Autorizo solicitudes diarias según los <a href="/terminos.html" target="_blank" rel="noopener">términos</a>.</span></label>
+            <label class="consent-option"><input type="checkbox" id="autoCancelConsent"><span>Autorizo cancelar tickets activos antes del cierre. El estado puede retrasarse y puedo perder el cupo.</span></label>
+            <button class="btn btn-secondary btn-block" id="btnSavePremium" type="submit">Guardar comidas · Gratis</button>
           </section>
           <section id="premiumPaymentStep" hidden>
             <button class="btn btn-secondary btn-sm" id="btnPremiumBack" type="button">Volver a mis comidas</button>
-            <h2 id="premiumPaymentTitle" tabindex="-1">Apoya la mejora de Mi Mesa</h2>
+            <h2 id="premiumPaymentTitle" tabindex="-1">Gracias por apoyar</h2>
             <p id="premiumPaymentMeals"></p>
             <div class="premium-payment-card">
               <span>Aporte opcional por el importe que elijas</span>
               <span>Yape del responsable</span><strong class="yape-number" id="contributionYape">Pendiente de habilitación</strong>
               <button class="btn btn-secondary" type="button" id="btnCopyYape">Copiar número de Yape</button>
             </div>
-            <ol class="premium-flow">
-              <li><strong>Decides si quieres colaborar</strong><span>Puedes usar las funciones gratuitas sin aportar.</span></li>
-              <li><strong>Tu aporte ayuda al proyecto</strong><span>No compra cupos, prioridad ni activaciones.</span></li>
-            </ol>
+            <p class="premium-help">Colabora con el importe que elijas. Las funciones gratuitas siguen disponibles para todos.</p>
             <p id="contributionAvailability" role="status"></p>
             <button class="btn btn-primary btn-block" id="btnSubmitPremiumPayment" type="button">Volver a mi cuenta</button>
             <p id="premiumPaymentStatus" role="status"></p>
