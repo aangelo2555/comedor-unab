@@ -1,6 +1,6 @@
 # Mi Mesa
 
-Realizado por FSO. Proyecto independiente de ayuda para organizar comidas. La automatización es gratuita y los aportes voluntarios no activan funciones ni conceden prioridad. La integración real sigue sujeta a las reglas y autorizaciones de la institución.
+Realizado por FSO. Proyecto independiente de ayuda para organizar comidas. Premium se configura desde el portal del administrador y tiene prioridad en la cola; los aportes voluntarios se gestionan por separado. La integración real sigue sujeta a las reglas y autorizaciones de la institución.
 
 ## Ejecución
 
@@ -21,15 +21,13 @@ El crédito FSO no sustituye la identificación del responsable. Las variables s
 
 Los estudiantes ingresan con sus propias credenciales y autorización de tratamiento, sin activación por parte del administrador ni dependencia de la identificación del proyecto. El acceso y la elegibilidad se validan con el sistema institucional. El administrador ingresa con su cuenta administrativa. El responsable debe completar el aviso de privacidad y sus obligaciones aplicables. El canal de aportes sigue deshabilitado por defecto y requiere identificación y contacto configurados.
 
-## Funcionamiento gratuito y aportes
+## Premium y gestión administrativa
 
-El estudiante acepta los términos y el tratamiento para autenticarse. La recurrencia requiere autorización específica y la cancelación preventiva tiene una selección separada, desmarcada inicialmente. La versión y fecha quedan registradas. Las solicitudes se ordenan sin prioridad por aportes o por pagos anteriores.
+El estudiante acepta los términos y el tratamiento para autenticarse. El administrador gestiona la activación de Premium, sus servicios, su fin de ciclo y la cancelación preventiva. La configuración registra su origen administrativo y el responsable que la realizó; no se presenta como consentimiento otorgado por el alumno.
 
-Quitar todas las comidas detiene la recurrencia. Retirar la autorización elimina las credenciales en memoria, deshabilita la automatización, anula solicitudes locales pendientes y cierra sesiones. Conserva el estado de tickets ya confirmados y el historial existente. Los derechos sobre el historial se atienden mediante el responsable.
+El alumno puede consultar su plan y contactar por WhatsApp al responsable. Los cambios del plan se realizan en el portal administrativo. Retirar la autorización elimina las credenciales en memoria, deshabilita la automatización, anula solicitudes locales pendientes y cierra sesiones. Conserva los tickets ya confirmados y el historial existente.
 
-Se conserva el esquema `premium` y algunas rutas e identificadores internos para leer datos y clientes anteriores. Su significado operativo actual es automatización gratuita autorizada. La ruta anterior de checkout responde HTTP 410 y no registra pagos ni habilita funciones. Los pagos históricos se conservan con su naturaleza anterior, pendientes de atención directa por el responsable cuando corresponda.
-
-Los nuevos aportes se realizan de forma voluntaria en el canal externo mostrado. La aplicación no los registra como pagos por funciones, no verifica transferencias y no promete ventajas o deducciones tributarias. No se usa un importe obligatorio.
+La ruta de checkout anterior responde HTTP 410 y no registra pagos ni habilita funciones. Los pagos históricos se conservan pendientes de atención directa por el responsable cuando corresponda.
 
 ## Persistencia y credenciales
 
@@ -62,7 +60,7 @@ El registro normal y el registro desde administración comprueban el cupo. La co
 
 Si ya existen más de 50 alumnos, sus cuentas y solicitudes permanecen guardadas. Los primeros 50 registros participan en nuevas reservas y automatizaciones. El resto puede ingresar y consultar su posición, con las nuevas reservas bloqueadas. Las cuentas desactivadas conservan su lugar de registro. Las cancelaciones previamente autorizadas de tickets existentes siguen su flujo habitual.
 
-Las solicitudes de cada comida se procesan por antigüedad de registro y después por fecha de solicitud. Los aportes voluntarios permanecen independientes de ese orden.
+Las solicitudes de cada comida se procesan primero para Premium. Dentro de cada grupo se respeta la antigüedad de registro y después la fecha de solicitud. Los aportes voluntarios se gestionan por separado.
 
 ## Preparación de sesiones y apertura
 
@@ -73,3 +71,9 @@ La comprobación del último minuto utiliza los tokens vigentes directamente y r
 El sondeo inicial de publicación se programa cada 250 ms, sujeto al presupuesto global de peticiones. El centinela revisa cada segundo cuando está libre. Las operaciones de apertura tienen preferencia sobre consultas ordinarias dentro de ese presupuesto. El límite inicial continúa siendo dos peticiones simultáneas, con 500 ms entre inicios. Los errores temporales y `Retry-After` mantienen sus esperas.
 
 El primer procesamiento comienza al detectar el servicio. El tiempo total depende del ritmo permitido y de UNAB. Con dos inicios por segundo, 50 envíos requieren al menos 25 segundos, además de las verificaciones de tickets y la latencia de las respuestas.
+
+## Administración de Premium y autenticación
+
+Solo el administrador puede activar Premium, seleccionar desayuno/almuerzo/cena, configurar el fin de ciclo y habilitar la cancelación preventiva. El endpoint de preferencias del alumno rechaza cambios con HTTP 403. El modal del alumno es informativo y enlaza a https://wa.me/51923887478; no registra solicitudes ni modifica el plan al abrir WhatsApp. La revocación de autorización y las cancelaciones manuales siguen disponibles.
+
+El login acepta `accessToken`, `access_token` o `token` en la raíz y en los contenedores `data`/`result`. Las respuestas exitosas sin token se reintentan una vez a través del límite compartido. Si siguen sin sesión, la solicitud conserva su posición: no se interpreta como falta de cupos. Las renovaciones fallidas tienen pausas progresivas de 5 a 30 segundos. Un HTTP 201 sin token sigue siendo una respuesta insuficiente del proveedor; no se inventa una sesión ni se garantiza la disponibilidad externa.

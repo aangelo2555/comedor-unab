@@ -230,7 +230,7 @@ if (process.env.ENROLLMENT_TEST_CHILD) {
           termsVersion: TERMS_VERSION
         })
       });
-      assert.equal(enable.status, 409);
+      assert.equal(enable.status, 403);
       assert.equal((await app.login('another-new')).status, 409);
       const state = JSON.parse(fs.readFileSync(app.file, 'utf8'));
       assert.equal(

@@ -78,15 +78,15 @@ function fixture({ count = 1, clock = '2026-11-19T18:00:00-05:00' } = {}) {
   };
 }
 
-test('contributions and legacy premium status do not change FIFO order', () => {
+test('Premium takes priority and preserves seniority inside each group', () => {
   const queue = [
-    { id: 'first-standard', createdAt: '2026-11-19T10:00:00Z' },
-    { id: 'second-premium', premium: true, createdAt: '2026-11-19T12:00:00Z' },
-    { id: 'first-premium', premium: true, createdAt: '2026-11-19T11:00:00Z' }
+    { id: 'first-standard', registrationOrder: 1, createdAt: '2026-11-19T10:00:00Z' },
+    { id: 'second-premium', premium: true, registrationOrder: 3, createdAt: '2026-11-19T11:00:00Z' },
+    { id: 'first-premium', premium: true, registrationOrder: 2, createdAt: '2026-11-19T12:00:00Z' }
   ];
   assert.deepEqual(
     queue.sort(compareQueue).map((item) => item.id),
-    ['first-standard', 'first-premium', 'second-premium']
+    ['first-premium', 'second-premium', 'first-standard']
   );
   assert.equal(
     isPremium(

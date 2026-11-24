@@ -16,7 +16,7 @@ if (process.env.UNAB_TEST_CHILD) {
       if (logins === 1) return new Response('{}', { status: 503 });
       await new Promise((resolve) => setTimeout(resolve, 100));
       // Expired token exercises concurrent renewal during availability queries.
-      return Response.json({ accessToken: 'e30.eyJleHAiOjF9.signature' });
+      return Response.json({ data: { accessToken: 'e30.eyJleHAiOjF9.signature' } }, { status: 201 });
     }
     if (url.endsWith('/auth/me')) {
       return Response.json({ data: { nombre: 'Estudiante de prueba' } });

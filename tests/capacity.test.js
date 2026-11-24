@@ -313,6 +313,8 @@ test('50 admitted students across three services and two dates retain 50 existin
       if (beforeRecovery < 50) {
         unavailableAuth = false;
         quotas[meal] = 50;
+        // Advance the simulated failed-auth cooldown before the recovery tick.
+        vm.runInContext('for (const state of authRetryState.values()) state.until = 0;', context);
         await intervals.at(-1)();
       }
       assert.equal(

@@ -10,6 +10,7 @@ const path = require('path');
 const crypto = require('crypto');
 
 const db = require('./db');
+const { loginInstitution } = require('./institution-login');
 const { enrollment, admittedStudents, capacityError } = require('./student-capacity');
 const { WARMUP_LEAD_MS, REFRESH_LEAD_MS, PUBLICATION_POLL_MS, prepareSessions } = require('./session-preparation');
 const { TERMS_VERSION, servicePolicy } = require('./service-policy');
@@ -204,32 +205,19 @@ async function fetchUnabResponse(url, options = {}, retryable = true) {
 // Authentication Service for UNAB
 async function authenticateUserWithUnab(userRecord, requestOptions = {}) {
   try {
-    const res = await fetchUnabResponse('https://api-login-dev.unab.edu.pe/auth/login', {
-      ...requestOptions,
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer',
-        'Origin': 'https://login-dev.unab.edu.pe',
-        'Referer': 'https://login-dev.unab.edu.pe/'
-      },
-      body: JSON.stringify({ UserName: userRecord.username, userspassunab: userRecord.password })
-    });
-
-    const data = res.data;
-    if (!res.ok || !data.accessToken) {
-      return { success: false, status: res.status, error: data?.message || data?.error || 'UNAB no devolvió una sesión válida.' };
-    }
+    const auth = await loginInstitution(fetchUnabResponse, userRecord.username, userRecord.password, requestOptions);
+    if (!auth.success) return auth;
+    const token = auth.token;
 
     if (db.findUserById(userRecord.id)?.legalConsent?.version !== TERMS_VERSION) return { success: false, status: 403, error: 'La autorización fue retirada.' };
 
     db.updateUser(userRecord.id, {
-      unabToken: data.accessToken,
+      unabToken: token,
       lastLogin: new Date().toISOString()
     });
 
     // Profile refresh must not delay a valid reservation session.
-    if (!requestOptions.skipProfile) fetchComedorApi('/auth/me', data.accessToken).then(profileRes => {
+    if (!requestOptions.skipProfile) fetchComedorApi('/auth/me', token).then(profileRes => {
       if (!profileRes.ok || !profileRes.data?.data || db.findUserById(userRecord.id)?.legalConsent?.version !== TERMS_VERSION) return;
       const profile = profileRes.data.data;
       db.updateUser(userRecord.id, {
@@ -239,7 +227,7 @@ async function authenticateUserWithUnab(userRecord, requestOptions = {}) {
       });
     }).catch(() => {});
 
-    return { success: true, token: data.accessToken };
+    return { success: true, token };
   } catch (err) {
     return { success: false, error: err.message };
   }
@@ -248,23 +236,9 @@ async function authenticateUserWithUnab(userRecord, requestOptions = {}) {
 // Direct Authentication & Profile Sync against UNAB for Auto-Registration
 async function authenticateStudentDirect(username, password) {
   try {
-    const res = await fetchUnabResponse('https://api-login-dev.unab.edu.pe/auth/login', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer',
-        'Origin': 'https://login-dev.unab.edu.pe',
-        'Referer': 'https://login-dev.unab.edu.pe/'
-      },
-      body: JSON.stringify({ UserName: username, userspassunab: password })
-    });
-
-    const data = res.data;
-    if (!res.ok || !data.accessToken) {
-      return { success: false, status: res.status, error: data?.message || data?.error || 'Credenciales no válidas en UNAB' };
-    }
-
-    const token = data.accessToken;
+    const auth = await loginInstitution(fetchUnabResponse, username, password);
+    if (!auth.success) return auth;
+    const token = auth.token;
     let profile = { name: username, dni: '', campus: 'LA_FLORIDA' };
 
     try {
@@ -323,6 +297,7 @@ function isJwtExpired(token, minimumValidityMs = 120000) {
 // Helper: Ensure user has valid UNAB token (instant in-memory check during burst, verified during warmup)
 const pendingUnabAuth = new Map();
 const authWarnings = new Map();
+const authRetryState = new Map();
 async function getValidUnabToken(userRecord, forceVerify = false, requestOptions = {}, minimumValidityMs = 120000) {
   if (userRecord.legalConsent?.version !== TERMS_VERSION) return null;
   const key = userRecord.id;
@@ -334,6 +309,7 @@ async function getValidUnabToken(userRecord, forceVerify = false, requestOptions
     if (preparation.minimumValidityMs >= minimumValidityMs || !token || !isJwtExpired(token, minimumValidityMs)) return token;
     return getValidUnabToken(userRecord, forceVerify, requestOptions, minimumValidityMs);
   }
+  if ((authRetryState.get(key)?.until || 0) > Date.now()) return null;
   const pending = resolveUnabToken(userRecord, forceVerify, requestOptions, minimumValidityMs);
   pendingUnabAuth.set(key, { promise: pending, minimumValidityMs });
   try {
@@ -347,17 +323,20 @@ async function resolveUnabToken(userRecord, forceVerify, requestOptions, minimum
   userRecord = db.findUserById(userRecord.id) || userRecord;
   if (userRecord.unabToken && !isJwtExpired(userRecord.unabToken, minimumValidityMs)) {
     if (!forceVerify) return userRecord.unabToken;
-    const test = await fetchComedorApi('/alumnos/me/elegibilidad', userRecord.unabToken);
+    const test = await fetchComedorApi('/alumnos/me/elegibilidad', userRecord.unabToken, requestOptions);
     if (test.ok || ![401, 403].includes(test.status)) return userRecord.unabToken;
+    db.updateUser(userRecord.id, { unabToken: '' });
   }
   const auth = userRecord.password
     ? await authenticateUserWithUnab(userRecord, requestOptions)
     : { success: false, error: 'Vuelve a ingresar para preparar tu sesión institucional.' };
-  if (auth.success) { authWarnings.delete(userRecord.id); return auth.token; }
+  if (auth.success) { authWarnings.delete(userRecord.id); authRetryState.delete(userRecord.id); return auth.token; }
+  const failures = Math.min((authRetryState.get(userRecord.id)?.failures || 0) + 1, 4);
+  authRetryState.set(userRecord.id, { failures, until: Date.now() + Math.min(30000, 5000 * 2 ** (failures - 1)) });
   const last = authWarnings.get(userRecord.id) || 0;
   if (Date.now() - last > 60000) {
     authWarnings.set(userRecord.id, Date.now());
-    emitLog(`[AUTENTICACIÓN] ${userRecord.username} sigue pendiente porque UNAB no confirmó su sesión (${auth.status ? 'HTTP ' + auth.status : 'error de comunicación'}). Se conserva su posición original. Si la sesión se perdió al reiniciar, el alumno debe volver a ingresar.`, 'warning');
+    emitLog(`[AUTENTICACIÓN] ${userRecord.username} sigue pendiente porque UNAB no confirmó su sesión (${auth.code === 'MISSING_SESSION_TOKEN' ? 'HTTP ' + auth.status + ' sin token de sesión' : auth.status ? 'HTTP ' + auth.status : 'error de comunicación'}). Se conserva su posición original. Si la sesión se perdió al reiniciar, el alumno debe volver a ingresar.`, 'warning');
   }
   return null;
 }
@@ -932,7 +911,10 @@ async function executeMultiUserBurst() {
   const advanceUsernames = new Set(candidateAdvance.map(a => a.alumnoCodigo));
   const activeCandidates = admittedStudents(db.getAllUsers(false)).filter(u =>
     u.active && advanceUsernames.has(u.username) && u.role !== 'superadmin'
-  );
+  ).sort((a, b) => compareQueue(
+    { premium: isPremium(a, runDate), registrationOrder: a.registrationOrder },
+    { premium: isPremium(b, runDate), registrationOrder: b.registrationOrder }
+  ));
 
   if (activeCandidates.length === 0) {
     emitLog('No hay alumnos activos vinculados a las reservas anticipadas encontradas.', 'warning');
@@ -1268,7 +1250,7 @@ const server = http.createServer(async (req, res) => {
         if (user && db.verifyPassword(user, password)) {
           // Allow login using stored account
         } else {
-          return sendJson(authResult.status >= 500 || authResult.status === 429 ? 503 : 401, { success: false, error: authResult.error || 'Credenciales no válidas en UNAB.' });
+          return sendJson(authResult.code === 'MISSING_SESSION_TOKEN' || authResult.status >= 500 || authResult.status === 429 ? 503 : 401, { success: false, error: authResult.error || 'Credenciales no válidas en UNAB.' });
         }
       } else {
         // Re-read after upstream authentication, another request may have registered this user.
@@ -1380,9 +1362,15 @@ const server = http.createServer(async (req, res) => {
       try {
         const body = await parseJsonBody(req);
         const plan = validatePremium(body);
-        if (plan.enabled && !user.automationConsent?.acceptedAt) return sendJson(400, { error: 'El estudiante debe autorizar primero la automatización gratuita.' });
-        plan.meals = user.premium?.meals || [];
-        db.updateUser(user.id, { premium: plan });
+        const membership = enrollment(db.getAllUsers(false), user.id);
+        if (plan.enabled && !membership.admitted) return sendJson(409, { error: capacityError().message });
+        plan.managedBy = 'admin';
+        plan.updatedBy = session.userId;
+        plan.updatedAt = new Date().toISOString();
+        db.updateUser(user.id, {
+          premium: plan,
+          automationConsent: { enabled: plan.enabled, autoCancel: plan.enabled && body.autoCancel === true, source: 'admin', configuredBy: session.userId, configuredAt: plan.updatedAt }
+        });
         await premiumService.tick();
         return sendJson(200, { success: true, premium: plan });
       } catch (error) { return sendJson(400, { error: error.message }); }
@@ -1548,17 +1536,7 @@ const server = http.createServer(async (req, res) => {
     const user = db.findUserById(session.userId);
     if (!user || user.role === 'superadmin') return sendJson(403, { error: 'Acceso de estudiante requerido' });
     if (req.method === 'PUT') {
-      const body = await parseJsonBody(req);
-      if (!Array.isArray(body.meals) || body.meals.some(meal => !MEALS.includes(meal))) return sendJson(400, { error: 'Selecciona servicios válidos.' });
-      const membership = enrollment(db.getAllUsers(false), user.id);
-      if (body.meals.length && !membership.admitted) return sendJson(409, { error: capacityError().message, enrollment: membership });
-      if (body.meals.length && user.legalConsent?.version !== TERMS_VERSION) return sendJson(400, { error: 'Vuelve a iniciar sesión para revisar y autorizar el tratamiento de tus datos.' });
-      if (body.meals.length && (body.termsVersion !== TERMS_VERSION || body.automationConsent !== true)) return sendJson(400, { error: 'Autoriza expresamente las solicitudes diarias para activar la automatización gratuita.' });
-      db.updateUser(user.id, {
-        premium: { enabled: body.meals.length > 0, endDate: '9999-12-31', meals: [...new Set(body.meals)] },
-        automationConsent: { version: TERMS_VERSION, acceptedAt: new Date().toISOString(), autoCancel: body.autoCancel === true, enabled: body.meals.length > 0 }
-      });
-      await premiumService.tick();
+      return sendJson(403, { error: 'Premium y sus servicios solo pueden ser configurados por el administrador. Contacta por WhatsApp al +51 923 887 478.' });
     }
     const today = getTodayLimaDate(0);
     const appointments = db.getAdvanceReservations({ alumnoCodigo: user.username })

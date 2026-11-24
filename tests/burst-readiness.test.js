@@ -281,3 +281,43 @@ test('student event refreshes are limited to the owner while administrator visib
   assert.equal(vm.runInContext('delivered.admin.length', context), 3);
   assert.equal(vm.runInContext("delivered.one[0].includes('private-ticket')", context), false);
 });
+
+test('Premium priority survives authentication failures in both opening and sentinel queues', async () => {
+  const { context, intervals } = createBurstHarness();
+  vm.runInContext(`
+    db.getAllUsers(false).forEach((user, index) => {
+      user.autoSniper = true;
+      user.registrationOrder = index + 1;
+    });
+    Object.assign(db.getAllUsers(false)[1], {
+      premium: { enabled: true, endDate: '2099-12-31', meals: ['CENA'] },
+      automationConsent: { enabled: true }
+    });
+    db.getAllReservations = () => [];
+    menu = [{ tipoComida: 'CENA', id: 'dinner' }];
+    getValidUnabToken = async user => { probeUsers.push(user.id); return null; };
+  `, context);
+  await vm.runInContext('executeMultiUserBurst()', context);
+  await intervals.at(-1)();
+  assert.deepEqual(Array.from(vm.runInContext('probeUsers', context)), ['two']);
+  assert.deepEqual(Array.from(vm.runInContext("getStudentsInSentinelQueue('2026-11-19', 'CENA').map(item => item.studentUsername)", context)), ['two', 'one']);
+  vm.runInContext("authWarnings.set('two', Date.now())", context);
+  assert.deepEqual(Array.from(vm.runInContext("getStudentsInSentinelQueue('2026-11-19', 'CENA').map(item => item.studentUsername)", context)), ['two', 'one']);
+});
+
+test('repeated tokenless successful logins back off without probing availability or losing the request', async () => {
+  const { context } = createBurstHarness();
+  vm.runInContext(`
+    let failedLogins = 0;
+    db.findUserById = id => ({ id, username:id, password:'test', legalConsent:{version:TERMS_VERSION} });
+    authenticateUserWithUnab = async () => { failedLogins++; return { success:false, status:201, code:'MISSING_SESSION_TOKEN' }; };
+  `, context);
+  await vm.runInContext("tokenResolver(db.findUserById('one'))", context);
+  await vm.runInContext("tokenResolver(db.findUserById('one'))", context);
+  assert.equal(vm.runInContext('failedLogins', context), 1);
+  assert.equal(vm.runInContext('authRetryState.get("one").failures', context), 1);
+  assert.equal(vm.runInContext('db.getAdvanceReservations().length', context), 2);
+  vm.runInContext("authRetryState.get('one').until = 0", context);
+  await vm.runInContext("tokenResolver(db.findUserById('one'))", context);
+  assert.equal(vm.runInContext('failedLogins', context), 2);
+});

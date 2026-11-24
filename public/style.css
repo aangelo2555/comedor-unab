@@ -1393,3 +1393,7 @@ body:not(.admin-session) .brand-logo { width: 30px; height: 34px; }
 .student-enrollment strong { font-size: 15px; }
 .student-enrollment span { font-size: 12px; line-height: 1.5; color: #294c6a; }
 .premium-session .student-enrollment { background: #f0f7ff; }
+
+.premium-benefits { padding-left: 1.25rem; margin: 1.25rem 0; }
+.premium-benefits li { margin-bottom: .75rem; line-height: 1.5; }
+#btnPremiumWhatsApp { text-align: center; text-decoration: none; }

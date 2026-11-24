@@ -8,7 +8,8 @@ const { test } = require('node:test');
 
 if (process.env.FREE_HELP_CHILD) {
   global.fetch = async url => {
-    if (url.includes('/auth/login')) return Response.json({ accessToken: 'e30.' + Buffer.from(JSON.stringify({ exp: 4102444800 })).toString('base64url') + '.test' });
+    if (url.includes('/auth/login') && process.env.TOKENLESS_LOGIN === '1') return Response.json({}, { status: 201 });
+    if (url.includes('/auth/login')) return Response.json({ data: { accessToken: 'e30.' + Buffer.from(JSON.stringify({ exp: 4102444800 })).toString('base64url') + '.test' } }, { status: 201 });
     if (url.endsWith('/auth/me')) return Response.json({ data: { nombre: 'Test student' } });
     return Response.json({ data: [] });
   };
@@ -20,14 +21,14 @@ if (process.env.FREE_HELP_CHILD) {
   };
   require('../server');
 } else {
-  async function launch(profileComplete) {
+  async function launch(profileComplete, tokenless = false) {
     const directory = fs.mkdtempSync(path.join(os.tmpdir(), 'mesa-help-'));
     const database = path.join(directory, 'database.json');
     fs.writeFileSync(database, JSON.stringify({ users: [
       { id: 'student', username: 'test-student', password: 'institution-secret', role: 'user', active: true, premiumRequest: { status: 'PENDING', reference: 'OLD-PAYMENT', meals: ['CENA'] } }
     ], reservas: [], advanceReservations: [], auditLogs: [] }));
     const child = fork(__filename, [], { env: {
-      ...process.env, FREE_HELP_CHILD: '1', DATA_DIR: directory, PORT: '0',
+      ...process.env, TOKENLESS_LOGIN: tokenless ? '1' : '0', FREE_HELP_CHILD: '1', DATA_DIR: directory, PORT: '0',
       DATABASE_URL: '', PGHOST: '', ADMIN_EMAIL: 'admin@example.test', ADMIN_PASSWORD: 'admin-test-only',
       SERVICE_OPERATOR: profileComplete ? 'Test operator' : '', SERVICE_CONTACT_EMAIL: profileComplete ? 'test@example.test' : '',
       VOLUNTARY_CONTRIBUTIONS_ENABLED: 'false', UNAB_REQUEST_INTERVAL_MS: '1'
@@ -46,6 +47,18 @@ if (process.env.FREE_HELP_CHILD) {
       fs.rmSync(directory, { recursive: true, force: true });
     } };
   }
+
+  test('a successful HTTP status without an institutional session returns a retryable error to new students', async () => {
+    const app = await launch(true, true);
+    try {
+      const response = await app.request('/api/auth/login', 'POST', { username: 'new-student', password: 'test-only', termsVersion: '2026-11-20', processingConsent: true });
+      assert.equal(response.status, 503);
+      const data = await response.json();
+      assert.equal(data.success, false);
+      assert.match(data.error, /sin un token/);
+      assert.ok(!JSON.parse(fs.readFileSync(app.database)).users.some(user => user.username === 'new-student'));
+    } finally { await app.close(); }
+  });
 
   test('students and admins can sign in without project identification while contributions stay disabled', async () => {
     const app = await launch(false);
@@ -69,7 +82,7 @@ if (process.env.FREE_HELP_CHILD) {
       const login = await app.request('/api/auth/login', 'POST', { username: 'test-student', password: 'institution-secret', termsVersion: '2026-11-20', processingConsent: true });
       assert.equal(login.status, 200);
       const { token } = await login.json();
-      assert.equal((await app.request('/api/student/premium', 'PUT', { meals: ['CENA'], termsVersion: '2026-11-20', automationConsent: true }, token)).status, 200);
+      assert.equal((await app.request('/api/student/premium', 'PUT', { meals: ['CENA'], termsVersion: '2026-11-20', automationConsent: true }, token)).status, 403);
       const adminLogin = await app.request('/api/auth/login', 'POST', { username: 'admin@example.test', password: 'admin-test-only' });
       assert.equal(adminLogin.status, 200);
       const admin = await adminLogin.json();
@@ -79,7 +92,7 @@ if (process.env.FREE_HELP_CHILD) {
     } finally { await app.close(); }
   });
 
-  test('free automation requires consent, ignores old payments, omits credentials and supports revocation', async () => {
+  test('only administrators configure Premium services, cycle and cancellation; credentials remain private and revocation works', async () => {
     const app = await launch(true);
     try {
       const credentials = { username: 'test-student', password: 'institution-secret' };
@@ -87,16 +100,29 @@ if (process.env.FREE_HELP_CHILD) {
       const login = await app.request('/api/auth/login', 'POST', { ...credentials, termsVersion: '2026-11-20', processingConsent: true });
       assert.equal(login.status, 200);
       const { token } = await login.json();
-      assert.equal((await app.request('/api/student/premium', 'PUT', { meals: ['CENA'] }, token)).status, 400);
+      assert.equal((await app.request('/api/student/premium', 'PUT', { meals: ['CENA'] }, token)).status, 403);
       assert.equal((await app.request('/api/student/premium/checkout', 'POST', { meals: ['CENA'] }, token)).status, 410);
-      const preferences = await app.request('/api/student/premium', 'PUT', { meals: ['CENA'], termsVersion: '2026-11-20', automationConsent: true }, token);
-      assert.equal(preferences.status, 200);
-      const data = await preferences.json();
-      assert.equal(data.active, true);
-      assert.equal(data.automationConsent.autoCancel, false);
-      assert.equal(data.paymentRequest.reference, 'OLD-PAYMENT');
-      assert.equal(data.paymentRequest.status, 'PENDING');
+      const initial = await (await app.request('/api/student/premium', 'GET', undefined, token)).json();
+      assert.equal(initial.active, false);
+      assert.equal((await app.request('/api/admin/premium/student', 'PUT', { enabled: true }, token)).status, 403);
       const admin = await (await app.request('/api/auth/login', 'POST', { username: 'admin@example.test', password: 'admin-test-only' })).json();
+      const endDate = '2099-12-31';
+      assert.equal((await app.request('/api/admin/premium/student', 'PUT', { enabled: true, endDate, meals: ['INVALID'] }, admin.token)).status, 400);
+      assert.equal((await app.request('/api/admin/premium/student', 'PUT', { enabled: true, endDate, meals: [] }, admin.token)).status, 400);
+      const configuration = await app.request('/api/admin/premium/student', 'PUT', { enabled: true, endDate, meals: ['DESAYUNO', 'CENA'], autoCancel: true }, admin.token);
+      assert.equal(configuration.status, 200);
+      const data = await (await app.request('/api/student/premium', 'GET', undefined, token)).json();
+      assert.equal(data.active, true);
+      assert.deepEqual(data.premium.meals, ['DESAYUNO', 'CENA']);
+      assert.equal(data.premium.endDate, endDate);
+      assert.equal(data.premium.managedBy, 'admin');
+      assert.equal(data.automationConsent.autoCancel, true);
+      assert.equal(data.automationConsent.source, 'admin');
+      assert.equal(data.paymentRequest.reference, 'OLD-PAYMENT');
+      assert.equal((await app.request('/api/student/premium', 'PUT', { meals: [] }, token)).status, 403);
+      assert.equal((await (await app.request('/api/student/premium', 'GET', undefined, token)).json()).active, true);
+      assert.equal((await app.request('/api/admin/premium/student', 'PUT', { enabled: false }, admin.token)).status, 200);
+      assert.equal((await (await app.request('/api/student/premium', 'GET', undefined, token)).json()).active, false);
       const backup = await (await app.request('/api/admin/backup', 'GET', undefined, admin.token)).json();
       assert.equal(backup.users.find(user => user.id === 'student').password, '');
       assert.equal(backup.users.find(user => user.id === 'student').unabToken, '');

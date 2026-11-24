@@ -352,7 +352,7 @@
         <p class="hero-eyebrow">Tu comedor universitario</p>
         <h2>Tu comida de hoy.</h2>
         <p>Elige tu servicio y consulta tus pases.</p>
-        <button class="btn btn-primary" id="btnPremiumOffer">Automatización gratuita y aportes</button>
+        <button class="btn btn-primary" id="btnPremiumOffer">Conocer Premium</button>
       </section>
       <nav class="tabs-header">
         <button class="tab-link active" data-target="student-tab-meals">
@@ -464,73 +464,58 @@
 
   <section id="panel-premium" class="premium-portal" style="display:none;">
     <div class="premium-hero">
-      <div><span class="premium-label">Mi Mesa · Ayuda gratuita</span>
+      <div><span class="premium-label">Mi Mesa · Premium</span>
         <h2>Tu ciclo,<br>bien organizado.</h2>
         <p id="premiumCycleSummary"></p>
-        <button class="btn btn-primary" id="btnPremiumSettings">Elegir mis servicios</button>
+        <button class="btn btn-primary" id="btnPremiumSettings">Información de Premium</button>
       </div>
       <aside class="premium-plan-card"><span>Tu selección recurrente</span><h3 id="premiumSelectedMeals">Elige tus comidas</h3>
-        <p>Las solicitudes se preparan cada día mientras mantengas la selección y la integración esté habilitada.</p>
-        <p>La cancelación preventiva solo se intenta si la autorizas expresamente.</p>
+        <p>El administrador configura tus servicios y la fecha de fin de ciclo.</p>
+        <p>La cancelación preventiva se intenta cuando está habilitada en tu plan.</p>
       </aside>
     </div>
     <h3 class="premium-requests-title">Mis solicitudes</h3>
     <div id="premiumRequestsHolder" class="grid-3 premium-requests"></div>
     <div class="premium-section-heading"><h3>Mis pases de hoy</h3><button class="btn btn-secondary" id="btnPremiumRefresh">Actualizar</button></div>
-    <p class="premium-help">Los aportes no dan prioridad. Las solicitudes dependen de los cupos y de la confirmación de la institución.</p>
+    <p class="premium-help">Tu plan Premium tiene prioridad en la cola. Las solicitudes dependen de los cupos y de la confirmación de la institución.</p>
     <div id="premiumTicketsHolder"></div>
   </section>
 
   <div class="modal-overlay" id="modalPremium" role="dialog" aria-modal="true" aria-labelledby="premiumModalTitle">
     <div class="modal-card premium-modal">
-      <div class="modal-header"><h3 id="premiumModalTitle">Ayuda para tus comidas</h3><button class="modal-close-btn" type="button" aria-label="Cerrar" onclick="closeModal('modalPremium')">&times;</button></div>
+      <div class="modal-header"><h3 id="premiumModalTitle">Servicio Premium</h3><button class="modal-close-btn" type="button" aria-label="Cerrar" onclick="closeModal('modalPremium')">&times;</button></div>
       <div class="modal-body">
-        <form id="formPremiumMeals">
-          <section id="premiumSelectionStep">
-            <div class="contribution-invitation">
-              <h2>Ayúdanos a mejorar</h2>
-              <p>Tu aporte mantiene Mi Mesa. Es voluntario y las funciones y atención son iguales para todos.</p>
-              <button class="btn btn-primary btn-block" id="btnShowContribution" type="button">Quiero aportar</button>
-            </div>
-            <p class="premium-help">Solicitamos tus comidas cada día. La confirmación depende de los cupos.</p>
-            <p id="premiumAccessMessage" role="status"></p>
-            <fieldset class="premium-meal-options"><legend>Tus comidas automáticas</legend>
-              <label><input type="checkbox" name="meal" value="DESAYUNO"><span>Desayuno</span></label>
-              <label><input type="checkbox" name="meal" value="ALMUERZO"><span>Almuerzo</span></label>
-              <label><input type="checkbox" name="meal" value="CENA"><span>Cena</span></label>
-            </fieldset>
-            <label class="consent-option"><input type="checkbox" id="automationConsent"><span>Autorizo solicitudes diarias según los <a href="/terminos.html" target="_blank" rel="noopener">términos</a>.</span></label>
-            <label class="consent-option"><input type="checkbox" id="autoCancelConsent"><span>Autorizo cancelar tickets activos antes del cierre. El estado puede retrasarse y puedo perder el cupo.</span></label>
-            <button class="btn btn-secondary btn-block" id="btnSavePremium" type="submit">Guardar comidas · Gratis</button>
-          </section>
-          <section id="premiumPaymentStep" hidden>
-            <button class="btn btn-secondary btn-sm" id="btnPremiumBack" type="button">Volver a mis comidas</button>
-            <h2 id="premiumPaymentTitle" tabindex="-1">Gracias por apoyar</h2>
-            <p id="premiumPaymentMeals"></p>
-            <div class="premium-payment-card">
-              <span>Aporte opcional por el importe que elijas</span>
-              <span>Yape del responsable</span><strong class="yape-number" id="contributionYape">Pendiente de habilitación</strong>
-              <button class="btn btn-secondary" type="button" id="btnCopyYape">Copiar número de Yape</button>
-            </div>
-            <p class="premium-help">Colabora con el importe que elijas. Las funciones gratuitas siguen disponibles para todos.</p>
-            <p id="contributionAvailability" role="status"></p>
-            <button class="btn btn-primary btn-block" id="btnSubmitPremiumPayment" type="button">Volver a mi cuenta</button>
-            <p id="premiumPaymentStatus" role="status"></p>
-          </section>
-        </form>
-        <button class="btn btn-secondary btn-block premium-dismiss" id="btnContinueWithoutPremium" type="button" onclick="closeModal('modalPremium')">Continuar sin aportar</button>
+        <span class="premium-label">Reservas automáticas</span>
+        <h2>Organiza tu ciclo con Premium.</h2>
+        <p>Solicitudes diarias de desayuno, almuerzo o cena, según los servicios que configure el administrador para ti.</p>
+        <ul class="premium-benefits">
+          <li>Reservas anticipadas automáticas hasta el fin de tu ciclo.</li>
+          <li>Prioridad en la cola de solicitudes.</li>
+          <li>Cancelación preventiva de tickets que sigan activos antes del cierre, si está habilitada.</li>
+        </ul>
+        <p class="premium-help">La cancelación comienza con anticipación según la cantidad de tickets y verifica primero su estado. Las reservas y cancelaciones dependen de la confirmación de la institución.</p>
+        <p id="premiumAccessMessage" role="status"></p>
+        <a class="btn btn-primary btn-block" id="btnPremiumWhatsApp" href="https://wa.me/51923887478?text=Hola%2C%20me%20interesa%20el%20servicio%20Premium%20de%20Mi%20Mesa." target="_blank" rel="noopener noreferrer">Consultar Premium por WhatsApp</a>
+        <p class="premium-help">+51 923 887 478 · El administrador activa y configura el servicio.</p>
+        <button class="btn btn-secondary btn-block premium-dismiss" type="button" onclick="closeModal('modalPremium')">Volver a mi panel</button>
       </div>
     </div>
   </div>
 
   <div class="modal-overlay" id="modalAdminPremium" role="dialog" aria-modal="true" aria-labelledby="adminPremiumTitle">
-    <div class="modal-card"><div class="modal-header"><h3 id="adminPremiumTitle">Configurar Automatización</h3><button class="modal-close-btn" type="button" aria-label="Cerrar" onclick="closeModal('modalAdminPremium')">&times;</button></div>
+    <div class="modal-card"><div class="modal-header"><h3 id="adminPremiumTitle">Configurar Premium</h3><button class="modal-close-btn" type="button" aria-label="Cerrar" onclick="closeModal('modalAdminPremium')">&times;</button></div>
       <form id="formAdminPremium" class="modal-body">
         <p id="adminPremiumStudent"></p>
         <p id="adminPremiumPaymentSummary"></p>
         <label id="adminPremiumPaymentConfirmation" class="premium-enable" hidden><input type="checkbox" id="adminConfirmPremiumPayment" disabled> Registro de la modalidad de pago anterior</label>
-        <label class="premium-enable"><input id="adminPremiumEnabled" type="checkbox"> Habilitar automatización gratuita autorizada por el estudiante</label>
-        <div class="form-group"><label class="form-label" for="adminPremiumEndDate">Fecha límite de la autorización gratuita</label><input class="form-control" id="adminPremiumEndDate" type="date"></div>
+        <label class="premium-enable"><input id="adminPremiumEnabled" type="checkbox"> Habilitar Premium</label>
+        <div class="form-group"><label class="form-label" for="adminPremiumEndDate">Fin del ciclo Premium</label><input class="form-control" id="adminPremiumEndDate" type="date"></div>
+        <fieldset class="premium-meal-options"><legend>Servicios del alumno</legend>
+          <label><input type="checkbox" name="adminMeal" value="DESAYUNO"><span>Desayuno</span></label>
+          <label><input type="checkbox" name="adminMeal" value="ALMUERZO"><span>Almuerzo</span></label>
+          <label><input type="checkbox" name="adminMeal" value="CENA"><span>Cena</span></label>
+        </fieldset>
+        <label class="consent-option"><input type="checkbox" id="adminPremiumAutoCancel"><span>Habilitar cancelación preventiva de tickets activos antes del cierre.</span></label>
         <button class="btn btn-primary btn-block" type="submit">Guardar configuración</button>
       </form>
     </div>

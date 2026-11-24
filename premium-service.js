@@ -12,6 +12,7 @@ function isPremium(user, date = limaDate()) {
 
 function compareQueue(a, b) {
   return (
+    Number(Boolean(b.premium)) - Number(Boolean(a.premium)) ||
     (a.registrationOrder || Number.MAX_SAFE_INTEGER) - (b.registrationOrder || Number.MAX_SAFE_INTEGER) ||
     String(a.createdAt || '').localeCompare(String(b.createdAt || '')) ||
     String(a.id || '').localeCompare(String(b.id || ''))
@@ -31,7 +32,11 @@ function validatePremium(value, today = limaDate()) {
   ) {
     throw new Error('Configura una fecha válida de fin de ciclo, desde hoy.');
   }
-  return { enabled: true, endDate: end, meals: [] };
+  if (!Array.isArray(value.meals) || !value.meals.length || value.meals.some(meal => !MEALS.includes(meal)))
+    throw new Error('Selecciona al menos un servicio válido para Premium.');
+  if (value.autoCancel !== undefined && typeof value.autoCancel !== 'boolean')
+    throw new Error('Indica si la cancelación automática está habilitada.');
+  return { enabled: true, endDate: end, meals: [...new Set(value.meals)] };
 }
 
 function createPremiumService({

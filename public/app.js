@@ -6,7 +6,6 @@
 
 let currentAuth = null;
 let premiumActive = false;
-let premiumPaymentRequest = null;
 let servicePolicy = { termsVersion: '2026-11-20', ready: false, contributionsEnabled: false, yape: '' };
 
 async function loadServicePolicy() {
@@ -15,11 +14,7 @@ async function loadServicePolicy() {
     if (!response.ok) throw new Error('No se pudo consultar el estado del proyecto.');
     servicePolicy = await response.json();
   } catch { servicePolicy.ready = false; }
-  document.getElementById('contributionYape').textContent = servicePolicy.contributionsEnabled && servicePolicy.yape ? servicePolicy.yape : 'Pendiente de habilitación';
-  document.getElementById('btnCopyYape').disabled = !servicePolicy.contributionsEnabled || !servicePolicy.yape;
-  document.getElementById('contributionAvailability').textContent = servicePolicy.contributionsEnabled && servicePolicy.yape
-    ? 'Aporte voluntario para mejorar Mi Mesa.'
-    : 'Aportes pendientes de habilitación. Puedes continuar gratis.';
+
 }
 let modalPreviousFocus = null;
 let eventStream = null;
@@ -349,7 +344,7 @@ function renderAdminUsersTable(users) {
       </td>
       <td>
         ${u.role !== 'superadmin' ? `
-          <button class="btn btn-secondary btn-sm" onclick="configureUserPremium('${u.id}')">Configurar ayuda gratuita</button>
+          <button class="btn btn-secondary btn-sm" onclick="configureUserPremium('${u.id}')">Configurar Premium</button>
           <button class="btn btn-danger btn-sm" onclick="deleteUserPrompt('${u.id}', '${u.username}')">Eliminar</button>
         ` : '<span class="badge badge-neutral">SuperAdmin</span>'}
       </td>
@@ -553,7 +548,7 @@ async function loadSentinelQueue() {
         tr.innerHTML = `
           <td><strong>${item.studentName}</strong><div style="font-size: 0.74rem; color: var(--slate-500); font-family: var(--font-mono);">${item.studentUsername}</div></td>
           <td>${item.studentDni || '-'}</td>
-          <td><span class="badge badge-neutral">${item.meal}</span>${item.premium ? '<span class="badge badge-success">Automatización</span>' : ''}</td>
+          <td><span class="badge badge-neutral">${item.meal}</span>${item.premium ? '<span class="badge badge-success">Premium</span>' : ''}</td>
           <td>${item.date}</td>
           <td>${timeStr}</td>
           <td><span class="badge ${statusBadgeClass}">${statusText}</span></td>
@@ -1235,9 +1230,8 @@ async function loadPremiumState(showOffer = false) {
     premiumActive = data.active;
     if (premiumActive && !wasActive && document.getElementById('modalPremium').classList.contains('active')) {
       closeModal('modalPremium');
-      showToast('Automatización gratuita configurada.', 'success');
+      showToast('Premium activado por el administrador.', 'success');
     }
-    premiumPaymentRequest = data.paymentRequest || null;
     setPageTheme(premiumActive ? '#0e243b' : '#6ca8ed');
     currentAuth.premium = data.premium;
     currentAuth.automationConsent = data.automationConsent;
@@ -1247,8 +1241,8 @@ async function loadPremiumState(showOffer = false) {
     const holder = document.getElementById('studentTicketsHolder');
     const target = document.getElementById(premiumActive ? 'premiumTicketsHolder' : 'student-tab-tickets');
     target.appendChild(holder);
-    document.getElementById('userRoleBadge').textContent = 'Estudiante · Mi Mesa';
-    document.getElementById('premiumCycleSummary').textContent = premiumActive ? 'Automatización gratuita. Puedes detenerla quitando las comidas seleccionadas.' : '';
+    document.getElementById('userRoleBadge').textContent = premiumActive ? 'Estudiante Premium · Mi Mesa' : 'Estudiante · Mi Mesa';
+    document.getElementById('premiumCycleSummary').textContent = premiumActive ? `Servicios configurados por el administrador hasta ${data.premium.endDate}. Cancelación preventiva: ${data.automationConsent?.autoCancel ? 'habilitada' : 'deshabilitada'}.` : '';
     document.getElementById('premiumSelectedMeals').textContent = data.premium.meals.map(meal => premiumMealNames[meal]).join(' · ') || 'Elige tus comidas';
     renderPremiumRequests(data.appointments || []);
     if (!document.getElementById('modalPremium').classList.contains('active')) updatePremiumModal();
@@ -1258,65 +1252,14 @@ async function loadPremiumState(showOffer = false) {
 }
 
 function updatePremiumModal() {
-  const plan = currentAuth?.premium || { meals: [] };
-  const meals = premiumActive ? plan.meals : premiumPaymentRequest?.meals || [];
-  document.getElementById('premiumAccessMessage').textContent = premiumActive ? 'Quita todas las comidas para detener las solicitudes.' : '';
-  document.getElementById('automationConsent').checked = currentAuth?.automationConsent?.enabled === true;
-  document.getElementById('autoCancelConsent').checked = currentAuth?.automationConsent?.autoCancel === true;
-  document.querySelectorAll('#formPremiumMeals input[name="meal"]').forEach(input => {
-    input.checked = meals.includes(input.value);
-    input.disabled = false;
-  });
-  document.getElementById('premiumSelectionStep').hidden = false;
-  document.getElementById('premiumPaymentStep').hidden = true;
-  document.getElementById('btnSavePremium').disabled = false;
-  document.getElementById('btnSavePremium').textContent = 'Guardar comidas · Gratis';
-  document.getElementById('btnContinueWithoutPremium').textContent = 'Continuar sin aportar';
-  document.getElementById('premiumPaymentStatus').textContent = '';
+  document.getElementById('premiumAccessMessage').textContent = premiumActive
+    ? 'Tu plan está activo. Para cambiar tus servicios, contacta al administrador.'
+    : '¿Te interesa? Escríbenos para conocer el servicio y solicitar su activación.';
 }
 
 document.getElementById('btnPremiumOffer').addEventListener('click', () => { updatePremiumModal(); openModal('modalPremium'); });
 document.getElementById('btnPremiumSettings').addEventListener('click', () => { updatePremiumModal(); openModal('modalPremium'); });
 document.getElementById('btnPremiumRefresh').addEventListener('click', async () => { await loadPremiumState(); loadStudentTickets(); });
-function selectedPremiumMeals() {
-  return Array.from(document.querySelectorAll('#formPremiumMeals input[name="meal"]:checked')).map(input => input.value);
-}
-
-document.getElementById('formPremiumMeals').addEventListener('submit', async event => {
-  event.preventDefault();
-  const meals = selectedPremiumMeals();
-  if (meals.length && !document.getElementById('automationConsent').checked) { showToast('Autoriza las solicitudes diarias o quita la selección para detenerlas.', 'info'); return; }
-  const button = document.getElementById('btnSavePremium');
-  button.disabled = true;
-  try {
-    const response = await fetch('/api/student/premium', { method: 'PUT', headers: authHeaders(), body: JSON.stringify({ meals, termsVersion: servicePolicy.termsVersion, automationConsent: document.getElementById('automationConsent').checked, autoCancel: document.getElementById('autoCancelConsent').checked }) });
-    const data = await response.json();
-    if (!response.ok) throw new Error(data.error || 'No se pudo guardar la selección.');
-    await loadPremiumState();
-    closeModal('modalPremium');
-    showToast('Servicios recurrentes guardados.', 'success');
-  } catch (error) { showToast(error.message, 'error'); }
-  finally { button.disabled = false; }
-});
-
-document.getElementById('btnPremiumBack').addEventListener('click', () => {
-  document.getElementById('premiumSelectionStep').hidden = false;
-  document.getElementById('premiumPaymentStep').hidden = true;
-  document.getElementById('btnSavePremium').focus({ preventScroll: true });
-  document.querySelector('#modalPremium .modal-card').scrollTop = 0;
-});
-document.getElementById('btnShowContribution').addEventListener('click', () => {
-  document.getElementById('premiumSelectionStep').hidden = true;
-  document.getElementById('premiumPaymentStep').hidden = false;
-  document.getElementById('premiumPaymentTitle').focus({ preventScroll: true });
-  document.querySelector('#modalPremium .modal-card').scrollTop = 0;
-});
-document.getElementById('btnCopyYape').addEventListener('click', async () => {
-  if (!servicePolicy.contributionsEnabled || !servicePolicy.yape) return;
-  try { await navigator.clipboard.writeText(servicePolicy.yape); showToast('Número copiado.', 'success'); }
-  catch { showToast('Número de Yape: ' + servicePolicy.yape, 'info'); }
-});
-document.getElementById('btnSubmitPremiumPayment').addEventListener('click', () => closeModal('modalPremium'));
 
 function configureUserPremium(id) {
   const user = adminUsersList.find(user => user.id === id);
@@ -1331,6 +1274,10 @@ function configureUserPremium(id) {
   document.getElementById('adminConfirmPremiumPayment').checked = false;
   const enabled = document.getElementById('adminPremiumEnabled');
   enabled.checked = Boolean(user.premium?.enabled);
+  document.querySelectorAll('#formAdminPremium input[name="adminMeal"]').forEach(input => {
+    input.checked = user.premium?.meals?.includes(input.value) || false;
+  });
+  document.getElementById('adminPremiumAutoCancel').checked = user.automationConsent?.autoCancel === true;
   const date = document.getElementById('adminPremiumEndDate');
   date.value = user.premium?.endDate || '';
   date.min = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
@@ -1348,13 +1295,13 @@ document.getElementById('formAdminPremium').addEventListener('submit', async eve
   try {
     const response = await fetch('/api/admin/premium/' + encodeURIComponent(editingPremiumUserId), {
       method: 'PUT', headers: authHeaders(),
-      body: JSON.stringify({ enabled: document.getElementById('adminPremiumEnabled').checked, endDate: document.getElementById('adminPremiumEndDate').value, confirmPayment: document.getElementById('adminConfirmPremiumPayment').checked })
+      body: JSON.stringify({ enabled: document.getElementById('adminPremiumEnabled').checked, endDate: document.getElementById('adminPremiumEndDate').value, meals: Array.from(document.querySelectorAll('#formAdminPremium input[name="adminMeal"]:checked')).map(input => input.value), autoCancel: document.getElementById('adminPremiumAutoCancel').checked })
     });
     const data = await response.json();
     if (!response.ok) throw new Error(data.error || 'No se pudo configurar Automatización.');
     closeModal('modalAdminPremium');
     await loadAdminUsers();
-    showToast('Configuración gratuita guardada.', 'success');
+    showToast('Premium configurado.', 'success');
   } catch (error) { showToast(error.message, 'error'); }
   finally { button.disabled = false; }
 });
@@ -1366,7 +1313,7 @@ document.addEventListener('keydown', event => {
   if (!dialog) return;
   if (event.key === 'Escape') closeModal(dialog.id);
   if (event.key !== 'Tab') return;
-  const focusable = Array.from(dialog.querySelectorAll('button:not(:disabled), input:not(:disabled), [tabindex="0"]'));
+  const focusable = Array.from(dialog.querySelectorAll('button:not(:disabled), input:not(:disabled), a[href], [tabindex="0"]'));
   const first = focusable[0];
   const last = focusable[focusable.length - 1];
   if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
@@ -1407,7 +1354,7 @@ function renderEnrollment(value, sessionNeedsLogin = false) {
     ? `Tu registro: ${value.position} de ${value.limit}`
     : `Tu registro: ${value.position} · Cupo de ${value.limit} alumnos completo`;
   document.getElementById('studentEnrollmentDetail').textContent = value.admitted
-    ? `${value.total} alumnos registrados. La prioridad corresponde al orden de registro.`
+    ? `${value.total} alumnos registrados. Premium tiene prioridad; en cada grupo se respeta el orden de registro.`
     : 'Tu cuenta se conserva. Las reservas están disponibles para los primeros registros dentro del cupo.';
   document.getElementById('btnRefreshInstitutionalSession').hidden = !sessionNeedsLogin;
   if (sessionNeedsLogin) document.getElementById('studentEnrollmentDetail').textContent += ' Vuelve a ingresar para preparar tu sesión institucional antes de la apertura.';
