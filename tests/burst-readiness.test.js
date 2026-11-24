@@ -61,6 +61,7 @@ function createBurstHarness() {
     emitLog = () => {};
     broadcastSSE = () => {};
     const tokenResolver = getValidUnabToken;
+    const apiCaller = fetchComedorApi;
     const probeUsers = [];
     getValidUnabToken = async user => { probeUsers.push(user.id); return 'token'; };
     let menu = [{tipoComida:'DESAYUNO'}, {tipoComida:'ALMUERZO'}];
@@ -409,4 +410,88 @@ test('failed session preparation does not report unpublished services without ac
   assert.ok(vm.runInContext('statusMessages.some(message => message.includes("ninguna sesión institucional estuvo lista"))', context));
   assert.equal(vm.runInContext('statusMessages.some(message => message.includes("sin detectar publicación"))', context), false);
   assert.equal(vm.runInContext('sentinelStarted', context), true);
+});
+
+test('simultaneous rejected reads share automatic renewal and retry once with the fresh token', async () => {
+  const {context} = createBurstHarness();
+  vm.runInContext(`
+    const owner = db.getAllUsers(false)[0];
+    owner.unabToken = 'old-token';
+    db.findUserById = id => db.getAllUsers(false).find(user => user.id === id);
+    db.updateUser = (id,value) => Object.assign(db.findUserById(id), value);
+    let renewals = 0;
+    let apiReads = 0;
+    fetchComedorApi = apiCaller;
+    getValidUnabToken = tokenResolver;
+    authenticateUserWithUnab = async user => {
+      renewals++;
+      await new Promise(resolve => setTimeout(resolve, 15));
+      const token = 'e30.'+Buffer.from(JSON.stringify({exp:Math.floor(Date.now()/1000)+3600})).toString('base64url')+'.fresh';
+      user.unabToken = token;
+      return {success:true,token};
+    };
+    fetchUnabResponse = async (url, options) => {
+      apiReads++;
+      return options.headers.Authorization === 'Bearer old-token' ? {status:401,ok:false,data:{}} : {status:200,ok:true,data:{data:[]}};
+    };
+  `,context);
+  const results = await vm.runInContext("Promise.all([apiCaller('/reservas/me', 'old-token'), apiCaller('/programacion/me', 'old-token')])",context);
+  assert.ok(results.every(result => result.ok));
+  assert.equal(vm.runInContext('renewals',context),1);
+  assert.equal(vm.runInContext('apiReads',context),4);
+});
+
+test('warmup rejection does not deadlock on its own pending renewal and writes are never blindly replayed', async () => {
+  const {context} = createBurstHarness();
+  vm.runInContext(`
+    const owner = db.getAllUsers(false)[0];
+    owner.unabToken = 'e30.'+Buffer.from(JSON.stringify({exp:Math.floor(Date.now()/1000)+3600})).toString('base64url')+'.old';
+    db.findUserById = id => db.getAllUsers(false).find(user => user.id === id);
+    db.updateUser = (id,value) => Object.assign(db.findUserById(id), value);
+    getValidUnabToken = tokenResolver;
+    fetchComedorApi = apiCaller;
+    let renewals = 0;
+    let apiCalls = 0;
+    authenticateUserWithUnab = async user => { renewals++; user.unabToken = 'fresh-token'; return {success:true,token:'fresh-token'}; };
+    fetchUnabResponse = async () => { apiCalls++; return {ok:false,status:401,data:{}}; };
+  `,context);
+  const token = await Promise.race([
+    vm.runInContext('tokenResolver(owner, true)',context),
+    new Promise((resolve,reject)=>setTimeout(()=>reject(Error('Warmup deadlocked')),300))
+  ]);
+  assert.equal(token,'fresh-token');
+  assert.equal(vm.runInContext('renewals',context),1);
+  await vm.runInContext("apiCaller('/reservas', 'fresh-token', {method:'POST'})",context);
+  assert.equal(vm.runInContext('apiCalls',context),2);
+  assert.equal(vm.runInContext('renewals',context),1);
+});
+
+test('definitively rejected credentials pause retries until credentials change', async()=>{
+  const {context}=createBurstHarness();
+  vm.runInContext(`
+    const owner = db.getAllUsers(false)[0];
+    db.findUserById = () => owner;
+    let renewals = 0;
+    authenticateUserWithUnab = async () => { renewals++; return {success:false,status:401}; };
+  `,context);
+  await vm.runInContext('tokenResolver(owner)',context);
+  await vm.runInContext('tokenResolver(owner)',context);
+  assert.equal(vm.runInContext('renewals',context),1);
+  vm.runInContext("owner.password = 'corrected-password'",context);
+  await vm.runInContext('tokenResolver(owner)',context);
+  assert.equal(vm.runInContext('renewals',context),2);
+});
+
+test('a late rejection of an old session does not discard a newer successful login', async()=>{
+  const {context}=createBurstHarness();
+  vm.runInContext(`
+    const owner = db.getAllUsers(false)[0];
+    const makeToken = suffix => 'e30.'+Buffer.from(JSON.stringify({exp:Math.floor(Date.now()/1000)+3600})).toString('base64url')+'.'+suffix;
+    owner.unabToken = makeToken('old');
+    db.findUserById = () => owner;
+    db.updateUser = (id,value) => Object.assign(owner,value);
+    fetchComedorApi = async () => { owner.unabToken = makeToken('new'); return {ok:false,status:401}; };
+    authenticateUserWithUnab = async () => { throw Error('New login must be retained'); };
+  `,context);
+  assert.equal(await vm.runInContext('tokenResolver(owner,true)',context),vm.runInContext("makeToken('new')",context));
 });

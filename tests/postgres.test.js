@@ -5,6 +5,7 @@ const { once } = require('node:events');
 const fs = require('node:fs');
 const os = require('node:os');
 const path = require('node:path');
+const crypto = require('node:crypto');
 const { Client } = require('pg');
 Object.assign(process.env, { SERVICE_OPERATOR: 'Test operator', SERVICE_CONTACT_EMAIL: 'test@example.test', INSTITUTION_INTEGRATION_AUTHORIZED: 'true' });
 
@@ -100,6 +101,7 @@ if (process.env.PG_RESTART_CHILD) {
           settings: { preservedSetting: true }
         })
       );
+      const recoveryKey = crypto.randomBytes(32).toString('base64');
       let child;
       let base;
       const stop = async () => {
@@ -119,6 +121,7 @@ if (process.env.PG_RESTART_CHILD) {
             ...process.env,
             ...config,
             PGDATABASE: database,
+            INSTITUTION_CREDENTIAL_KEY: recoveryKey,
             DATA_DIR: directory,
             DATABASE_URL: '',
             PORT: '0',
@@ -186,6 +189,7 @@ if (process.env.PG_RESTART_CHILD) {
         const session = await request(base + '/api/auth/me', { headers });
         assert.equal(session.status, 200);
         assert.equal((await session.json()).user.id, 'legacy-student');
+        assert.equal((await request(base + '/api/comedor/programacion?date=2026-11-19', { headers })).status, 200, 'Institutional session is restored automatically');
         const restored = await request(
           base + '/api/student/advance-reservations',
           { headers }
@@ -203,6 +207,9 @@ if (process.env.PG_RESTART_CHILD) {
           await inspect.query('SELECT document FROM comedor_state WHERE id = 1')
         ).rows[0].document;
         assert.equal(state.settings.preservedSetting, true);
+        assert.ok(state.institutionalCredentials['legacy-student']);
+        assert.equal(state.users.find(user => user.id === 'legacy-student').password, '');
+        assert.equal(state.users.find(user => user.id === 'legacy-student').unabToken, '');
         assert.equal(
           state.users.find((user) => user.id === 'legacy-admin').username,
           'legacy-admin@example.test'

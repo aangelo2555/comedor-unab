@@ -260,7 +260,8 @@ async function authenticateStudentDirect(username, password) {
 }
 
 // Comedor API Proxy Helper
-async function fetchComedorApi(endpoint, token, options = {}) {
+async function fetchComedorApi(endpoint, token, options = {}, renewed = false) {
+  const owner = db.getAllUsers(false).find(user => user.unabToken === token);
   const url = `https://comedor-api.unab.edu.pe/v1${endpoint.startsWith('/') ? endpoint : '/' + endpoint}`;
   const headers = {
     'Content-Type': 'application/json',
@@ -274,8 +275,16 @@ async function fetchComedorApi(endpoint, token, options = {}) {
 
   const result = await fetchUnabResponse(url, { ...options, headers }, !options.method || options.method === 'GET');
   if (result.status === 401) {
-    const user = db.getAllUsers(false).find(user => user.unabToken === token);
-    if (user) db.updateUser(user.id, { unabToken: '' });
+    const user = owner || db.getAllUsers(false).find(user => user.unabToken === token);
+    if (user) {
+      if (user.unabToken === token) db.updateUser(user.id, { unabToken: '' });
+      // Only a rejected read is replayed; writes retain reconciliation semantics.
+      // Warmup verification passes renewed=true to avoid awaiting its own auth promise.
+      if (!renewed && (!options.method || options.method === 'GET') && (!options.canProceed || options.canProceed())) {
+        const replacement = await getValidUnabToken(user, false, options);
+        if (replacement) return fetchComedorApi(endpoint, replacement, options, true);
+      }
+    }
   }
   return result;
 }
@@ -331,7 +340,9 @@ async function getValidUnabToken(userRecord, forceVerify = false, requestOptions
     if (preparation.minimumValidityMs >= minimumValidityMs || !token || !isJwtExpired(token, minimumValidityMs)) return token;
     return getValidUnabToken(userRecord, forceVerify, requestOptions, minimumValidityMs);
   }
-  if ((authRetryState.get(key)?.until || 0) > Date.now()) return null;
+  const retry = authRetryState.get(key);
+  if (retry?.credentialFingerprint && retry.credentialFingerprint !== crypto.createHash('sha256').update(current.password || '').digest('hex')) clearAuthIssue(key);
+  else if ((retry?.until || 0) > Date.now()) return null;
   const pending = resolveUnabToken(userRecord, forceVerify, requestOptions, minimumValidityMs);
   pendingUnabAuth.set(key, { promise: pending, minimumValidityMs });
   try {
@@ -345,9 +356,12 @@ async function resolveUnabToken(userRecord, forceVerify, requestOptions, minimum
   userRecord = db.findUserById(userRecord.id) || userRecord;
   if (userRecord.unabToken && !isJwtExpired(userRecord.unabToken, minimumValidityMs)) {
     if (!forceVerify) return userRecord.unabToken;
-    const test = await fetchComedorApi('/alumnos/me/elegibilidad', userRecord.unabToken, requestOptions);
-    if (test.ok || ![401, 403].includes(test.status)) return userRecord.unabToken;
-    db.updateUser(userRecord.id, { unabToken: '' });
+    const verifiedToken = userRecord.unabToken;
+    const test = await fetchComedorApi('/alumnos/me/elegibilidad', verifiedToken, requestOptions, true);
+    const current = db.findUserById(userRecord.id) || userRecord;
+    if (current.unabToken && current.unabToken !== verifiedToken && !isJwtExpired(current.unabToken, minimumValidityMs)) return current.unabToken;
+    if (test.ok || ![401, 403].includes(test.status)) return verifiedToken;
+    if (current.unabToken === verifiedToken) db.updateUser(userRecord.id, { unabToken: '' });
   }
   if (!userRecord.password) {
     noteAuthIssue(userRecord, 'LOGIN_REQUIRED');
@@ -356,7 +370,9 @@ async function resolveUnabToken(userRecord, forceVerify, requestOptions, minimum
   const auth = await authenticateUserWithUnab(userRecord, requestOptions);
   if (auth.success) { clearAuthIssue(userRecord.id); return auth.token; }
   const failures = Math.min((authRetryState.get(userRecord.id)?.failures || 0) + 1, 4);
-  authRetryState.set(userRecord.id, { failures, until: Date.now() + Math.min(30000, 5000 * 2 ** (failures - 1)) });
+  authRetryState.set(userRecord.id, auth.status === 401
+    ? { failures, until: Infinity, credentialFingerprint: crypto.createHash('sha256').update(userRecord.password).digest('hex') }
+    : { failures, until: Date.now() + Math.min(30000, 5000 * 2 ** (failures - 1)) });
   noteAuthIssue(userRecord, auth.code || (auth.status === 401 ? 'CREDENTIALS_REJECTED' : 'AUTHENTICATION_FAILED'), auth.status);
   return null;
 }
@@ -1247,7 +1263,7 @@ const server = http.createServer(async (req, res) => {
       const authResult = await authenticateStudentDirect(cleanUsername, password);
       if (!authResult.success) {
         // Fallback: If user already exists in DB and credentials match stored record
-        if (user && db.verifyPassword(user, password)) {
+        if (user && ![401, 403].includes(authResult.status) && db.verifyPassword(user, password)) {
           // Allow login using stored account
         } else {
           return sendJson(authResult.code === 'MISSING_SESSION_TOKEN' || authResult.status >= 500 || authResult.status === 429 ? 503 : 401, { success: false, error: authResult.error || 'Credenciales no válidas en UNAB.' });
@@ -1959,6 +1975,7 @@ async function startServer() {
     if (value.expiresAt > Date.now() && db.findUserById(value.userId)) sessions.set(key, value);
   }
   server.listen(PORT, '0.0.0.0', () => {
+  console.log(db.credentialRecoveryEnabled?.() ? '[SESIONES] Recuperación cifrada entre reinicios habilitada.' : '[SESIONES] Recuperación entre reinicios deshabilitada: configura INSTITUTION_CREDENTIAL_KEY y vuelve a autenticar las cuentas existentes.');
   const mem = process.memoryUsage();
   console.log(`\n======================================================`);
   console.log(`[SISTEMA] MI MESA - AYUDA GRATUITA`);

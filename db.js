@@ -7,6 +7,9 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { readKey, sealCredentials, openCredentials } = require('./credential-vault');
+const { TERMS_VERSION } = require('./service-policy');
+const credentialKey = readKey();
 const { STUDENT_LIMIT, assignRegistrationOrder, enrollment, capacityError } = require('./student-capacity');
 
 let DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
@@ -79,14 +82,25 @@ function verifyPassword(user, password) {
   return actual.length === expected.length && crypto.timingSafeEqual(actual, expected);
 }
 
-// Institutional credentials stay in process memory, outside persisted state and backups.
-function persistedDocument(data) {
-  return JSON.stringify({ ...data, users: data.users.map(user => ({
-    ...user,
-    password: user.role === 'superadmin' ? hashPassword(user.password) : '',
-    unabToken: ''
-  })) });
+// Plaintext secrets never enter persisted user rows or downloadable backups.
+function persistedDocument(data, includeCredentials = true) {
+  const { institutionalCredentials: stored, ...document } = data;
+  const existing = stored && typeof stored === 'object' && !Array.isArray(stored) ? stored : {};
+  const institutionalCredentials = {};
+  if (includeCredentials) for (const user of data.users) {
+    if (user.role === 'superadmin' || user.legalConsent?.version !== TERMS_VERSION) continue;
+    if (credentialKey && (user.password || user.unabToken)) institutionalCredentials[user.id] = sealCredentials(user, credentialKey);
+    else if (existing[user.id]) institutionalCredentials[user.id] = existing[user.id];
+  }
+  return JSON.stringify({ ...document,
+    ...(includeCredentials ? { institutionalCredentials } : {}),
+    users: data.users.map(user => ({ ...user,
+      password: user.role === 'superadmin' ? hashPassword(user.password) : '', unabToken: ''
+    }))
+  });
 }
+function credentialRecoveryEnabled() { return Boolean(credentialKey); }
+
 let postgres = null;
 let version = 0;
 let persistedVersion = 0;
@@ -225,6 +239,14 @@ function normalizeDb() {
     admin.role = 'superadmin';
   }
 
+  let recoveryFailures = 0;
+  for (const user of cache.users) {
+    if (user.role === 'superadmin' || user.legalConsent?.version !== TERMS_VERSION) continue;
+    const recovered = openCredentials(cache.institutionalCredentials?.[user.id], user, credentialKey);
+    if (recovered) { user.password = recovered.password; user.unabToken = recovered.token; }
+    else if (credentialKey && cache.institutionalCredentials?.[user.id]) recoveryFailures++;
+  }
+  if (recoveryFailures) console.warn(`[SESIONES] ${recoveryFailures} cuenta(s) no pudieron recuperar sus credenciales cifradas. Verifica la clave; los datos cifrados se conservan.`);
   assignRegistrationOrder(cache.users);
   return cache;
 }
@@ -325,6 +347,9 @@ function updateUser(id, updateData) {
   if (updateData.automationConsent !== undefined) u.automationConsent = updateData.automationConsent;
   if (updateData.legalConsent !== undefined) u.legalConsent = updateData.legalConsent;
 
+  if ((updateData.password === '' && updateData.unabToken === '') || updateData.legalConsent === null) {
+    if (db.institutionalCredentials) delete db.institutionalCredentials[id];
+  }
   saveDb(db);
   const { password, unabToken, ...safeUser } = u;
   return safeUser;
@@ -520,7 +545,7 @@ function markAdvanceReservationConfirmed(id, ticketData) {
 
 // Backup & Restore
 function backupDatabase() {
-  const data = JSON.parse(persistedDocument(loadDb()));
+  const data = JSON.parse(persistedDocument(loadDb(), false));
   data.sessions = [];
   return data;
 }
@@ -571,6 +596,7 @@ function updateSettings(newSettings) {
 }
 
 module.exports = {
+  credentialRecoveryEnabled,
   verifyPassword,
   initialize, flush, close, health, storageMode, getSessions, saveSessions,
   ADMIN_EMAIL,
