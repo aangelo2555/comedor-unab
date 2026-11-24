@@ -592,54 +592,8 @@ function stopGlobalSniper(quiet = false) {
 // Sentinel Queue: ONLY students whose meal has ALREADY opened and is currently inside the active service window!
 function getStudentsInSentinelQueue(filterDate = null, filterMeal = null) {
   const targetDate = filterDate || globalSniper.targetDate || getTodayLimaDate(0);
-  const allRes = db.getAllReservations();
-  const allAdvance = db.getAdvanceReservations({ fecha: targetDate, status: 'ACTIVA' });
-  const allUsers = admittedStudents(db.getAllUsers(false)).filter(u => u.active && u.autoSniper);
-
-  const queue = [];
-
-  for (const adv of allAdvance) {
-    if (filterMeal && !['TODAS', 'INTELIGENTE'].includes(filterMeal) && adv.tipoComida.toUpperCase() !== filterMeal.toUpperCase()) {
-      continue;
-    }
-
-    // Centinela queue strictly requires that the meal has opened and is currently in its active service window
-    if (!isMealInServiceWindow(adv.tipoComida, targetDate)) {
-      continue;
-    }
-
-    const student = allUsers.find(u => u.username === adv.alumnoCodigo || (adv.alumnoDni && u.dni === adv.alumnoDni));
-    if (!student) continue;
-    if (adv.source === 'premium' && !isPremium(student, targetDate)) continue;
-
-    // Check if student already has a confirmed active ticket for this meal on targetDate
-    const alreadyConfirmed = allRes.some(r => 
-      (r.alumnoCodigo === student.username || (student.dni && r.alumnoDni === student.dni)) &&
-      r.fecha === targetDate &&
-      r.tipoComida.toUpperCase() === adv.tipoComida.toUpperCase() &&
-      r.estado === 'ACTIVA'
-    );
-
-    if (!alreadyConfirmed) {
-      queue.push({
-        advanceId: adv.id,
-        studentUsername: student.username,
-        studentName: student.name,
-        studentDni: student.dni,
-        campus: student.campus,
-        meal: adv.tipoComida.toUpperCase(),
-        date: targetDate,
-        createdAt: adv.createdAt,
-        registrationOrder: student.registrationOrder || enrollment(db.getAllUsers(false), student.id).position,
-        premium: isPremium(student, targetDate)
-      });
-    } else {
-      // Auto-heal: mark advance reservation as confirmed so it does not persist in ACTIVA
-      db.markAdvanceReservationConfirmed(adv.id, { id: 'SYNCED', qrToken: '' });
-    }
-  }
-
-  return queue.sort(compareQueue);
+  return getAllPendingAdvanceReservations().filter(item => item.eligible && item.isSentinel && item.date === targetDate &&
+    (!filterMeal || ['TODAS', 'INTELIGENTE'].includes(filterMeal) || item.meal === filterMeal.toUpperCase()));
 }
 
 // Consolidated Advance Reservations & Sentinel Queue for Admin View
@@ -662,6 +616,7 @@ function getAllPendingAdvanceReservations() {
       const inWindow = isMealInServiceWindow(adv.tipoComida, adv.fecha);
       const cfg = MEAL_CONFIGS[adv.tipoComida];
       const membership = enrollment(allUsers, student?.id);
+      const eligible = Boolean(student?.active && student.autoSniper && membership.admitted);
       list.push({
         advanceId: adv.id,
         studentUsername: adv.alumnoCodigo,
@@ -674,9 +629,10 @@ function getAllPendingAdvanceReservations() {
         registrationOrder: student?.registrationOrder || membership.position,
         premium: isPremium(student, adv.fecha),
         admitted: membership.admitted,
+        eligible,
         authPending: authWarnings.has(student?.id),
-        isSentinel: inWindow,
-        statusText: !membership.admitted ? 'Fuera del cupo de alumnos' : inWindow
+        isSentinel: eligible && inWindow,
+        statusText: !membership.admitted ? 'Fuera del cupo de alumnos' : !student?.active ? 'Cuenta inactiva' : !student.autoSniper ? 'Automatización pausada' : inWindow
           ? 'En Cola Centinela (Buscando Liberados)' 
           : `Reserva Anticipada (Disparo a las ${cfg?.horaInicio || '17:00'})`
       });
@@ -685,6 +641,20 @@ function getAllPendingAdvanceReservations() {
     }
   }
   return list.sort(compareQueue);
+}
+
+// Counts and table rows are built from one snapshot; authentication failures stay pending.
+function getPendingQueueSnapshot(date = globalSniper.targetDate, meal = globalSniper.targetMeal) {
+  const queue = getAllPendingAdvanceReservations();
+  const current = queue.filter(item => item.eligible && item.isSentinel && item.date === (date || getTodayLimaDate(0)) &&
+    (!meal || ['TODAS', 'INTELIGENTE'].includes(meal) || item.meal === meal.toUpperCase()));
+  const students = items => new Set(items.map(item => item.studentUsername)).size;
+  return {
+    queue, count: queue.length, totalPendingCount: queue.length,
+    pendingStudentCount: students(queue), sentinelQueueCount: current.length,
+    sentinelStudentCount: students(current),
+    authPendingStudentCount: students(queue.filter(item => item.eligible && item.authPending))
+  };
 }
 
 function checkAndManageSentinelQueue() {
@@ -1852,15 +1822,13 @@ const server = http.createServer(async (req, res) => {
     const eligible = new Set(admittedStudents(db.getAllUsers(false)).filter(user => user.active).map(user => user.username));
     const activeAdvanceForNext = db.getAdvanceReservations({ fecha: nextOpening.date, status: 'ACTIVA' })
       .filter(a => a.tipoComida.toUpperCase() === nextOpening.meal.toUpperCase() && eligible.has(a.alumnoCodigo));
-    const sentinelQueue = getStudentsInSentinelQueue(globalSniper.targetDate, globalSniper.targetMeal);
-    const allPending = getAllPendingAdvanceReservations();
+    const { queue, ...snapshotCounts } = getPendingQueueSnapshot();
 
     return sendJson(200, {
       ...globalSniper,
       mealConfigs: MEAL_CONFIGS,
       sentinelActive: !!sentinelIntervalId,
-      sentinelQueueCount: sentinelQueue.length,
-      totalPendingCount: allPending.length,
+      ...snapshotCounts,
       nextOpening: {
         meal: nextOpening.meal,
         date: nextOpening.date,
@@ -1896,14 +1864,10 @@ const server = http.createServer(async (req, res) => {
 
   // GET /api/sniper/queue
   if (pathname === '/api/sniper/queue' && req.method === 'GET') {
-    const sentinelQueue = getStudentsInSentinelQueue(globalSniper.targetDate, globalSniper.targetMeal);
-    const allPending = getAllPendingAdvanceReservations();
+    const snapshot = getPendingQueueSnapshot();
     return sendJson(200, {
       success: true,
-      queue: allPending,
-      count: allPending.length,
-      sentinelQueueCount: sentinelQueue.length,
-      totalPendingCount: allPending.length,
+      ...snapshot,
       sentinelActive: !!sentinelIntervalId,
       status: globalSniper.status,
       targetMeal: globalSniper.targetMeal,

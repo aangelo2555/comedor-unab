@@ -77,3 +77,9 @@ El primer procesamiento comienza al detectar el servicio. El tiempo total depend
 Solo el administrador puede activar Premium, seleccionar desayuno/almuerzo/cena, configurar el fin de ciclo y habilitar la cancelación preventiva. El endpoint de preferencias del alumno rechaza cambios con HTTP 403. El modal del alumno es informativo y enlaza a https://wa.me/51923887478; no registra solicitudes ni modifica el plan al abrir WhatsApp. La revocación de autorización y las cancelaciones manuales siguen disponibles.
 
 El login acepta `accessToken`, `access_token` o `token` en la raíz y en los contenedores `data`/`result`. Las respuestas exitosas sin token se reintentan una vez a través del límite compartido. Si siguen sin sesión, la solicitud conserva su posición: no se interpreta como falta de cupos. Las renovaciones fallidas tienen pausas progresivas de 5 a 30 segundos. Un HTTP 201 sin token sigue siendo una respuesta insuficiente del proveedor; no se inventa una sesión ni se garantiza la disponibilidad externa.
+
+## Invitación y contadores del panel
+
+Los alumnos ordinarios ven la invitación informativa a Premium al entrar en su panel, incluso cuando se recupera su sesión. Las actualizaciones periódicas no vuelven a abrirla. La activación del plan sigue siendo administrativa.
+
+La tabla y su resumen utilizan la misma lista de solicitudes pendientes. Se distinguen solicitudes y alumnos únicos, y se muestran aparte los alumnos del servicio actual en Centinela y los que tienen autenticación pendiente. La autenticación pendiente no excluye al alumno de la cola. Las cuentas inactivas o con automatización pausada conservan sus solicitudes y muestran ese estado explícito.

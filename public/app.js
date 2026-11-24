@@ -531,7 +531,12 @@ async function loadSentinelQueue() {
 
     const tbody = document.getElementById('sentinelQueueTableBody');
     const badgeCount = document.getElementById('sentinelQueueCountBadge');
-    if (badgeCount) badgeCount.textContent = `${data.totalPendingCount ?? (data.count || 0)} registrada(s)`;
+    if (badgeCount) badgeCount.textContent = `${data.totalPendingCount ?? (data.count || 0)} solicitud(es) pendiente(s)`;
+    const queueLive = document.getElementById('autoQueueLiveCount');
+    if (queueLive) queueLive.textContent = `${data.pendingStudentCount || 0} alumno(s)`;
+    const queueDetail = document.getElementById('autoQueueLiveDetail');
+    if (queueDetail) queueDetail.textContent = `${data.totalPendingCount || 0} solicitudes · ${data.sentinelStudentCount || 0} en Centinela · ${data.authPendingStudentCount || 0} con autenticación pendiente`;
+
 
     if (!tbody) return;
     tbody.innerHTML = '';
@@ -543,7 +548,7 @@ async function loadSentinelQueue() {
         const tr = document.createElement('tr');
         const timeStr = item.createdAt ? new Date(item.createdAt).toLocaleTimeString('es-PE', { timeZone: 'America/Lima' }) : '--:--';
         const statusBadgeClass = item.isSentinel ? 'badge-warning' : 'badge-neutral';
-        const statusText = item.authPending ? 'Autenticación institucional pendiente' : item.statusText || (item.isSentinel ? 'En Cola Centinela (Liberados)' : 'Reserva Anticipada');
+        const statusText = item.eligible && item.authPending ? 'Autenticación institucional pendiente' : item.statusText || (item.isSentinel ? 'En Cola Centinela (Liberados)' : 'Reserva Anticipada');
 
         tr.innerHTML = `
           <td><strong>${item.studentName}</strong><div style="font-size: 0.74rem; color: var(--slate-500); font-family: var(--font-mono);">${item.studentUsername}</div></td>
@@ -570,7 +575,7 @@ async function loadSentinelQueue() {
         statusBadge.textContent = `CENTINELA ACTIVO (${data.targetMeal || 'ALMUERZO'})`;
       }
       if (sysStatus) {
-        sysStatus.textContent = `Vigilando cupos liberados en tiempo real para ${data.sentinelQueueCount || 0} alumno(s) en cola`;
+        sysStatus.textContent = `Vigilando cupos liberados en tiempo real para ${data.sentinelStudentCount || 0} alumno(s) del servicio actual; ${data.pendingStudentCount || 0} alumno(s) pendientes en total`;
       }
     } else if (data.status === 'ARMED') {
       if (statusBadge) {
@@ -617,6 +622,9 @@ async function loadSniperStatus() {
       } else if (data.status === 'RESERVING') {
         sniperLive.textContent = `Disparando ráfaga...`;
         sniperLive.style.color = 'var(--rose)';
+      } else if (data.sentinelActive) {
+        sniperLive.textContent = 'Centinela en seguimiento';
+        sniperLive.style.color = 'var(--amber)';
       } else if (data.nextOpening?.advanceCount > 0) {
         sniperLive.textContent = `Programado (${data.nextOpening.meal} ${data.nextOpening.time})`;
         sniperLive.style.color = 'var(--navy-primary)';
@@ -637,18 +645,7 @@ async function loadSniperStatus() {
       }
     }
 
-    const queueLive = document.getElementById('autoQueueLiveCount');
-    if (queueLive) {
-      const sentCount = data.sentinelQueueCount || 0;
-      const totalCount = data.totalPendingCount ?? (data.queue?.length || 0);
-      if (sentCount > 0) {
-        queueLive.textContent = `${sentCount} en Centinela`;
-      } else if (totalCount > 0) {
-        queueLive.textContent = `${totalCount} anticipada(s)`;
-      } else {
-        queueLive.textContent = `0 alumnos`;
-      }
-    }
+
   } catch (err) {
     console.error('Error cargando estado:', err);
   }
@@ -1246,6 +1243,7 @@ async function loadPremiumState(showOffer = false) {
     document.getElementById('premiumSelectedMeals').textContent = data.premium.meals.map(meal => premiumMealNames[meal]).join(' · ') || 'Elige tus comidas';
     renderPremiumRequests(data.appointments || []);
     if (!document.getElementById('modalPremium').classList.contains('active')) updatePremiumModal();
+    if (showOffer && !premiumActive) { updatePremiumModal(); openModal('modalPremium'); }
   } catch (error) {
     showToast(error.message, 'error');
   }
@@ -1254,7 +1252,7 @@ async function loadPremiumState(showOffer = false) {
 function updatePremiumModal() {
   document.getElementById('premiumAccessMessage').textContent = premiumActive
     ? 'Tu plan está activo. Para cambiar tus servicios, contacta al administrador.'
-    : '¿Te interesa? Escríbenos para conocer el servicio y solicitar su activación.';
+    : 'Solicita tu activación por WhatsApp.';
 }
 
 document.getElementById('btnPremiumOffer').addEventListener('click', () => { updatePremiumModal(); openModal('modalPremium'); });

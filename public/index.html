@@ -168,9 +168,9 @@
               <span class="kpi-subtext">Monitorea cupos liberados</span>
             </div>
             <div class="kpi-card">
-              <span class="kpi-label">ALUMNOS EN COLA ACTIVA</span>
+              <span class="kpi-label">ALUMNOS CON SOLICITUDES PENDIENTES</span>
               <div class="kpi-value" id="autoQueueLiveCount">0 alumnos</div>
-              <span class="kpi-subtext">Esperando apertura o liberación</span>
+              <span class="kpi-subtext"><span id="autoQueueLiveDetail">Esperando apertura o liberación</span></span>
             </div>
           </div>
         </div>
@@ -485,19 +485,19 @@
     <div class="modal-card premium-modal">
       <div class="modal-header"><h3 id="premiumModalTitle">Servicio Premium</h3><button class="modal-close-btn" type="button" aria-label="Cerrar" onclick="closeModal('modalPremium')">&times;</button></div>
       <div class="modal-body">
-        <span class="premium-label">Reservas automáticas</span>
-        <h2>Organiza tu ciclo con Premium.</h2>
-        <p>Solicitudes diarias de desayuno, almuerzo o cena, según los servicios que configure el administrador para ti.</p>
-        <ul class="premium-benefits">
-          <li>Reservas anticipadas automáticas hasta el fin de tu ciclo.</li>
-          <li>Prioridad en la cola de solicitudes.</li>
-          <li>Cancelación preventiva de tickets que sigan activos antes del cierre, si está habilitada.</li>
-        </ul>
-        <p class="premium-help">La cancelación comienza con anticipación según la cantidad de tickets y verifica primero su estado. Las reservas y cancelaciones dependen de la confirmación de la institución.</p>
+        <div class="premium-visual" aria-hidden="true"><svg viewBox="0 0 80 64" fill="none"><rect x="13" y="13" width="54" height="44" rx="13" fill="white"/><path d="M24 8v12m32-12v12M14 29h52" stroke="currentColor" stroke-width="4" stroke-linecap="round"/><path d="m29 42 8 7 15-14" stroke="currentColor" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/></svg><span>PREMIUM</span></div>
+        <h2>Tus comidas, en automático.</h2>
+        <p class="premium-intro">Organiza tu ciclo con una sola activación.</p>
+        <div class="premium-benefit-grid">
+          <div><span aria-hidden="true">↻</span><strong>Todo el ciclo</strong><small>Solicitudes diarias sin repetir la reserva.</small></div>
+          <div><span aria-hidden="true">↑</span><strong>Prioridad en cola</strong><small>Tus solicitudes se procesan primero.</small></div>
+          <div><span aria-hidden="true">✓</span><strong>Cancelación preventiva</strong><small>Tickets sin consumir, antes del cierre si está habilitada.</small></div>
+          <div><span aria-hidden="true">☷</span><strong>Tus servicios</strong><small>Desayuno, almuerzo y/o cena.</small></div>
+        </div>
         <p id="premiumAccessMessage" role="status"></p>
-        <a class="btn btn-primary btn-block" id="btnPremiumWhatsApp" href="https://wa.me/51923887478?text=Hola%2C%20me%20interesa%20el%20servicio%20Premium%20de%20Mi%20Mesa." target="_blank" rel="noopener noreferrer">Consultar Premium por WhatsApp</a>
-        <p class="premium-help">+51 923 887 478 · El administrador activa y configura el servicio.</p>
-        <button class="btn btn-secondary btn-block premium-dismiss" type="button" onclick="closeModal('modalPremium')">Volver a mi panel</button>
+        <a class="btn btn-primary btn-block" id="btnPremiumWhatsApp" href="https://wa.me/51923887478?text=Hola%2C%20me%20interesa%20el%20servicio%20Premium%20de%20Mi%20Mesa." target="_blank" rel="noopener noreferrer">Quiero Premium · WhatsApp</a>
+        <p class="premium-footnote">El administrador configura tu plan. Reservas y cancelaciones sujetas a confirmación institucional.</p>
+        <button class="btn btn-secondary btn-block premium-dismiss" type="button" onclick="closeModal('modalPremium')">Ahora no</button>
       </div>
     </div>
   </div>

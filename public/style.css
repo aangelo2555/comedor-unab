@@ -1397,3 +1397,18 @@ body:not(.admin-session) .brand-logo { width: 30px; height: 34px; }
 .premium-benefits { padding-left: 1.25rem; margin: 1.25rem 0; }
 .premium-benefits li { margin-bottom: .75rem; line-height: 1.5; }
 #btnPremiumWhatsApp { text-align: center; text-decoration: none; }
+
+/* Compact Premium invitation, readable on a phone without a wall of text. */
+.premium-visual { display: flex; align-items: center; gap: 12px; color: #1c5277; margin-bottom: 12px; }
+.premium-visual svg { width: 68px; height: 58px; background: #e3f1ff; border-radius: 18px; }
+.premium-visual span { font-size: 12px; letter-spacing: .14em; font-weight: 800; }
+.premium-modal .premium-intro { color: #52697d; margin-bottom: 16px; }
+.premium-benefit-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; margin-bottom: 16px; }
+.premium-benefit-grid > div { padding: 12px; background: #edf5fd; border-radius: 16px; }
+.premium-benefit-grid span { display: inline-flex; align-items: center; justify-content: center; width: 28px; height: 28px; border-radius: 10px; background: white; color: #1c5277; font-size: 20px; margin-bottom: 8px; }
+.premium-benefit-grid strong, .premium-benefit-grid small { display: block; }
+.premium-benefit-grid strong { font-size: 13px; margin-bottom: 5px; }
+.premium-benefit-grid small { font-size: 12px; line-height: 1.4; color: #52697d; }
+.premium-modal .premium-footnote { font-size: 11px; line-height: 1.4; color: #52697d; margin: 10px 0; }
+.premium-modal #premiumAccessMessage { font-size: 13px; margin-bottom: 12px; }
+.premium-modal .premium-dismiss { min-height: 38px; margin-top: 0; padding: 8px; }

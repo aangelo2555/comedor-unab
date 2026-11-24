@@ -15,6 +15,7 @@ function createBurstHarness() {
   }));
   const advances = students.map((u) => ({
     alumnoCodigo: u.username,
+    fecha: '2026-11-19',
     tipoComida: 'CENA',
     status: 'ACTIVA'
   }));
@@ -320,4 +321,34 @@ test('repeated tokenless successful logins back off without probing availability
   vm.runInContext("authRetryState.get('one').until = 0", context);
   await vm.runInContext("tokenResolver(db.findUserById('one'))", context);
   assert.equal(vm.runInContext('failedLogins', context), 2);
+});
+
+test('queue summary includes pending authentication and labels paused automation without counting it as watching', () => {
+  const { context } = createBurstHarness();
+  vm.runInContext(`
+    db.getAllReservations = () => [];
+    db.getAllUsers(false).forEach(user => { user.autoSniper = true; });
+    authWarnings.set('two', Date.now());
+  `, context);
+  let summary = vm.runInContext("getPendingQueueSnapshot('2026-11-19', 'CENA')", context);
+  assert.equal(summary.queue.length, 2);
+  assert.equal(summary.totalPendingCount, 2);
+  assert.equal(summary.pendingStudentCount, 2);
+  assert.equal(summary.sentinelStudentCount, 2);
+  assert.equal(summary.authPendingStudentCount, 1);
+  assert.equal(vm.runInContext("getStudentsInSentinelQueue('2026-11-19', 'CENA').length", context), 2);
+  vm.runInContext("db.getAllUsers(false)[1].autoSniper = false", context);
+  summary = vm.runInContext("getPendingQueueSnapshot('2026-11-19', 'CENA')", context);
+  assert.equal(summary.totalPendingCount, 2);
+  assert.equal(summary.pendingStudentCount, 2);
+  assert.equal(summary.sentinelStudentCount, 1);
+  assert.equal(summary.queue.find(item => item.studentUsername === 'two').statusText, 'Automatización pausada');
+  vm.runInContext(`
+    db.getAllUsers(false)[1].autoSniper = true;
+    db.getAdvanceReservations().push({ alumnoCodigo:'one', tipoComida:'ALMUERZO', fecha:'2026-11-19', status:'ACTIVA' });
+  `, context);
+  summary = vm.runInContext("getPendingQueueSnapshot('2026-11-19', 'CENA')", context);
+  assert.equal(summary.totalPendingCount, 3);
+  assert.equal(summary.pendingStudentCount, 2);
+  assert.equal(summary.sentinelStudentCount, 2);
 });
