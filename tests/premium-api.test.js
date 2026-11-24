@@ -53,6 +53,8 @@ if (process.env.FREE_HELP_CHILD) {
       const policy = await (await app.request('/api/service-policy')).json();
       assert.equal(policy.integrationEnabled, true);
       assert.equal(policy.contributionsEnabled, false);
+      assert.equal((await app.request('/')).headers.get('cache-control'), 'no-store');
+      assert.equal((await app.request('/app.js?v=login-20261124')).headers.get('cache-control'), 'no-store');
       assert.equal((await app.request('/api/auth/login', 'POST', { username: 'test-student', password: 'institution-secret' })).status, 400);
       const login = await app.request('/api/auth/login', 'POST', { username: 'test-student', password: 'institution-secret', termsVersion: '2026-11-20', processingConsent: true });
       assert.equal(login.status, 200);

@@ -220,6 +220,14 @@ function showAppView(user) {
 // Login Submit (Transparent Auto-Registration)
 document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
   e.preventDefault();
+  const consent = document.getElementById('processingConsent');
+  if (!consent) {
+    showToast('La página está desactualizada. Cargando la versión actual…', 'info');
+    const updatedPage = new URL(window.location.href);
+    updatedPage.searchParams.set('actualizar', String(Date.now()));
+    window.location.replace(updatedPage.href);
+    return;
+  }
   const username = document.getElementById('loginUsername').value.trim();
   const password = document.getElementById('loginPassword').value.trim();
 
@@ -228,7 +236,7 @@ document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
     const res = await fetch('/api/auth/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ username, password, termsVersion: servicePolicy.termsVersion, processingConsent: document.getElementById('processingConsent').checked })
+      body: JSON.stringify({ username, password, termsVersion: servicePolicy.termsVersion, processingConsent: consent.checked })
     });
 
     const data = await res.json();
@@ -241,7 +249,7 @@ document.getElementById('loginForm')?.addEventListener('submit', async (e) => {
       showToast(data.error || 'Credenciales no válidas', 'error');
     }
   } catch (err) {
-    showToast(`Error de conexión: ${err.message}`, 'error');
+    showToast('No se pudo iniciar sesión. Vuelve a intentarlo.', 'error');
   }
 });
 

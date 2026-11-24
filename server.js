@@ -1879,6 +1879,8 @@ const server = http.createServer(async (req, res) => {
   }
 
   // --- STATIC FILE SERVING ---
+  // Keep HTML, scripts and styles in sync across deployments and restored tabs.
+  res.setHeader('Cache-Control', 'no-store');
   let filePath = path.join(PUBLIC_DIR, pathname === '/' ? 'index.html' : pathname);
 
   if (!filePath.startsWith(PUBLIC_DIR)) {
