@@ -28,6 +28,7 @@ const upstreamFailures = new Map();
 
 const PORT = process.env.PORT || 3000;
 const PUBLIC_DIR = path.join(__dirname, 'public');
+const APP_VERSION = require('./app-version').applicationVersion(__dirname);
 
 // Active in-memory session tokens: { [token]: { userId, username, role, expiresAt } }
 const sessions = new Map();
@@ -1150,6 +1151,11 @@ const server = http.createServer(async (req, res) => {
     return res.end();
   }
 
+  if (pathname === '/api/version' && req.method === 'GET') {
+    res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8', 'Cache-Control': 'no-store' });
+    return res.end(JSON.stringify({ version: APP_VERSION }));
+  }
+
   const sendJson = async (status, data) => {
     try { await db.flush?.(); }
     catch { status = 503; data = { error: 'No se pudo confirmar el guardado. Vuelve a intentarlo.' }; }
@@ -1897,13 +1903,20 @@ const server = http.createServer(async (req, res) => {
           return res.end('Not Found');
         }
         res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' });
-        res.end(content);
+        res.end(content.toString('utf8').replaceAll('__APP_VERSION__', APP_VERSION));
       });
       return;
     }
 
     const ext = path.extname(filePath).toLowerCase();
     const contentType = mimeTypes[ext] || 'application/octet-stream';
+    if (ext === '.html') {
+      return fs.readFile(filePath, 'utf8', (error, content) => {
+        if (error) { res.writeHead(500); return res.end('No se pudo cargar la página.'); }
+        res.writeHead(200, { 'Content-Type': contentType });
+        res.end(content.replaceAll('__APP_VERSION__', APP_VERSION));
+      });
+    }
     res.writeHead(200, { 'Content-Type': contentType });
     fs.createReadStream(filePath).pipe(res);
   });

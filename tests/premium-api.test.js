@@ -55,6 +55,16 @@ if (process.env.FREE_HELP_CHILD) {
       assert.equal(policy.contributionsEnabled, false);
       assert.equal((await app.request('/')).headers.get('cache-control'), 'no-store');
       assert.equal((await app.request('/app.js?v=login-20261124')).headers.get('cache-control'), 'no-store');
+      const versionResponse = await app.request('/api/version');
+      assert.equal(versionResponse.headers.get('cache-control'), 'no-store');
+      const { version } = await versionResponse.json();
+      assert.match(version, /^[a-f0-9]{64}$/);
+      for (const page of ['/', '/terminos.html', '/unknown-page']) {
+        const html = await (await app.request(page)).text();
+        assert.ok(html.includes(`name="app-version" content="${version}"`));
+        assert.ok(html.includes(`/auto-update.js?v=${version}`));
+        assert.ok(!html.includes('__APP_VERSION__'));
+      }
       assert.equal((await app.request('/api/auth/login', 'POST', { username: 'test-student', password: 'institution-secret' })).status, 400);
       const login = await app.request('/api/auth/login', 'POST', { username: 'test-student', password: 'institution-secret', termsVersion: '2026-11-20', processingConsent: true });
       assert.equal(login.status, 200);
