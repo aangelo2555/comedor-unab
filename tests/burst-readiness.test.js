@@ -56,6 +56,7 @@ function createBurstHarness() {
     globalSniper.targetDate = '2026-11-19';
     emitLog = () => {};
     broadcastSSE = () => {};
+    const tokenResolver = getValidUnabToken;
     const probeUsers = [];
     getValidUnabToken = async user => { probeUsers.push(user.id); return 'token'; };
     let menu = [{tipoComida:'DESAYUNO'}, {tipoComida:'ALMUERZO'}];
@@ -162,4 +163,121 @@ test('failed authentication preserves FIFO position regardless of legacy premium
     ),
     true
   );
+});
+
+test('warmup and last-minute refresh use current enrollment and stop with the engine', async () => {
+  const { context } = createBurstHarness();
+  const timers = [];
+  const cleared = [];
+  context.setTimeout = (callback, delay) => {
+    timers.push({ callback, delay });
+    return timers.length;
+  };
+  context.clearTimeout = (id) => cleared.push(id);
+  const target = new Date(Date.now() + 600000);
+  context.targetDate = target.toLocaleDateString('en-CA', {
+    timeZone: 'America/Lima'
+  });
+  context.targetTime = target.toLocaleTimeString('en-GB', {
+    timeZone: 'America/Lima',
+    hourCycle: 'h23'
+  });
+  vm.runInContext(
+    `
+    isJwtExpired = () => false;
+    const preparationCalls = [];
+    getValidUnabToken = async (user, force) => { preparationCalls.push({id:user.id, force}); return 'token'; };
+    startGlobalSniper({targetMeal:'CENA', targetDate, targetTime});
+  `,
+    context
+  );
+  assert.equal(timers.length, 3);
+  assert.ok(timers[0].delay >= 298000 && timers[0].delay <= 300000);
+  assert.equal(timers[1].delay - timers[0].delay, 240000);
+  assert.equal(timers[2].delay - timers[1].delay, 59750);
+  await timers[0].callback();
+  assert.equal(vm.runInContext('preparationCalls.length', context), 2);
+  vm.runInContext(
+    `
+    db.getAllUsers(false).push({id:'late',username:'late',role:'user',active:true});
+    db.getAdvanceReservations().push({alumnoCodigo:'late',tipoComida:'CENA',status:'ACTIVA'});
+  `,
+    context
+  );
+  await timers[1].callback();
+  assert.equal(vm.runInContext('preparationCalls.length', context), 5);
+  assert.equal(vm.runInContext('preparationCalls[4].id', context), 'late');
+  assert.equal(vm.runInContext('preparationCalls[4].force', context), false);
+  vm.runInContext('stopGlobalSniper(true)', context);
+  assert.ok([1, 2, 3].every((id) => cleared.includes(id)));
+});
+
+test('tokens must cover opening, while a ready token does not wait for background verification', async () => {
+  const { context } = createBurstHarness();
+  vm.runInContext(
+    `
+    getValidUnabToken = tokenResolver;
+    db.findUserById = id => db.getAllUsers(false).find(user => user.id === id);
+    const student = db.getAllUsers(false)[0];
+    student.legalConsent = {version:TERMS_VERSION};
+    student.password = 'test';
+    const makeToken = ttl => 'e30.' + Buffer.from(JSON.stringify({exp:Math.floor((Date.now()+ttl)/1000)})).toString('base64url') + '.test';
+    const nearExpiry = makeToken(180000);
+    const preparedToken = makeToken(3600000);
+    student.unabToken = nearExpiry;
+    let renewals = 0;
+    authenticateUserWithUnab = async () => { renewals++; student.unabToken = preparedToken; return {success:true,token:preparedToken}; };
+  `,
+    context
+  );
+  assert.equal(vm.runInContext('isJwtExpired(nearExpiry)', context), false);
+  assert.equal(
+    vm.runInContext('isJwtExpired(nearExpiry,420000)', context),
+    true
+  );
+  await vm.runInContext(
+    'getValidUnabToken(student,true,{skipProfile:true},420000)',
+    context
+  );
+  assert.equal(vm.runInContext('renewals', context), 1);
+  vm.runInContext(
+    'pendingUnabAuth.set(student.id,{promise:new Promise(()=>{}),minimumValidityMs:420000})',
+    context
+  );
+  const token = await Promise.race([
+    vm.runInContext('getValidUnabToken(student)', context),
+    new Promise((resolve, reject) =>
+      setTimeout(
+        () =>
+          reject(new Error('Ready session waited for background verification')),
+        200
+      )
+    )
+  ]);
+  assert.equal(token, vm.runInContext('preparedToken', context));
+  vm.runInContext('pendingUnabAuth.delete(student.id)', context);
+});
+
+test('student event refreshes are limited to the owner while administrator visibility is retained', () => {
+  const { context } = createBurstHarness();
+  // This harness replaces broadcasting for engine tests. Load the real declaration again.
+  const source = fs.readFileSync(path.join(__dirname, '../server.js'), 'utf8');
+  const start = source.indexOf('function broadcastSSE(');
+  const end = source.indexOf('\nfunction emitLog', start);
+  vm.runInContext(source.slice(start, end), context);
+  vm.runInContext(`
+    const delivered = {one:[],two:[],admin:[]};
+    for (const username of ['one','two','admin']) {
+      const token = 'token-'+username;
+      sessions.set(sessionKey(token), {userId:username});
+      sseClients.add({viewer:{token,username,role:username==='admin'?'superadmin':'user'},write:payload=>delivered[username].push(payload),end(){}});
+    }
+    broadcastSSE('reservation-status-changed',{student:'one',ticket:{id:'private-ticket'}});
+    broadcastSSE('sentinel-queue-updated',{queue:[]});
+    broadcastSSE('reservation-batch-finished',[{user:'two',results:[]}]);
+  `, context);
+  assert.equal(vm.runInContext('delivered.one.length', context), 1);
+  assert.equal(vm.runInContext('delivered.two.length', context), 1);
+  assert.equal(vm.runInContext('delivered.admin.length', context), 3);
+  assert.equal(vm.runInContext("delivered.one[0].includes('private-ticket')", context), false);
 });

@@ -7,6 +7,7 @@
 const fs = require('fs');
 const path = require('path');
 const crypto = require('crypto');
+const { STUDENT_LIMIT, assignRegistrationOrder, enrollment, capacityError } = require('./student-capacity');
 
 let DATA_DIR = process.env.DATA_DIR || path.join(__dirname, 'data');
 let DB_FILE = path.join(DATA_DIR, 'database.json');
@@ -224,6 +225,7 @@ function normalizeDb() {
     admin.role = 'superadmin';
   }
 
+  assignRegistrationOrder(cache.users);
   return cache;
 }
 
@@ -276,11 +278,16 @@ function addUser(userData) {
     throw new Error(`El usuario ${userData.username} ya se encuentra registrado.`);
   }
 
+  assignRegistrationOrder(db.users);
+  const role = userData.role || 'user';
+  if (role !== 'superadmin' && enrollment(db.users).total >= STUDENT_LIMIT) throw capacityError();
+  const registrationOrder = db.users.reduce((maximum, user) => Math.max(maximum, user.registrationOrder || 0), 0) + 1;
   const newUser = {
     id: `usr-${crypto.randomBytes(4).toString('hex')}`,
     username: userData.username.trim(),
     password: userData.password.trim(),
-    role: userData.role || 'user',
+    role,
+    ...(role !== 'superadmin' ? { registrationOrder } : {}),
     name: userData.name || userData.username,
     dni: userData.dni || '',
     campus: userData.campus || 'LA_FLORIDA',
@@ -522,8 +529,9 @@ function restoreDatabase(importedData) {
   if (!importedData || !Array.isArray(importedData.users)) {
     throw new Error('Estructura de respaldo inválida.');
   }
-  saveDb(importedData);
-  loadDb(); // Trigger self-healing
+  cache = importedData;
+  normalizeDb();
+  saveDb(cache);
   addAuditLog('Base de datos restaurada desde respaldo JSON.', 'warning');
   return true;
 }

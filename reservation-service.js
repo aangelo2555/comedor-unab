@@ -7,10 +7,11 @@ function createReservationService(callApi) {
     programming,
     date,
     meal,
-    canProceed = () => true
+    canProceed = () => true,
+    requestOptions
   ) {
     const query = `/reservas/me?fecha=${encodeURIComponent(date)}`;
-    const existing = await callApi(query, token);
+    const existing = await callApi(query, token, requestOptions);
     if (!existing.ok || !Array.isArray(existing.data?.data)) {
       return {
         ok: false,
@@ -37,6 +38,7 @@ function createReservationService(callApi) {
         data: { message: 'La solicitud dejó de estar activa.' }
       };
     const result = await callApi('/reservas', token, {
+      ...requestOptions,
       method: 'POST',
       body: JSON.stringify({ programacionId: programming }),
       canProceed
@@ -44,7 +46,7 @@ function createReservationService(callApi) {
     if (result.ok && result.data?.success && result.data.data?.id)
       return result;
     // A lost response can still mean the upstream committed the reservation.
-    const check = await callApi(query, token);
+    const check = await callApi(query, token, requestOptions);
     const found =
       check.ok &&
       Array.isArray(check.data?.data) &&
@@ -77,12 +79,20 @@ function createReservationService(callApi) {
     programming,
     date,
     meal,
-    canProceed
+    canProceed,
+    requestOptions
   ) {
     meal = meal.toUpperCase();
     const key = JSON.stringify([userId, date, meal]);
     if (pending.has(key)) return pending.get(key);
-    const operation = reserve(token, programming, date, meal, canProceed);
+    const operation = reserve(
+      token,
+      programming,
+      date,
+      meal,
+      canProceed,
+      requestOptions
+    );
     pending.set(key, operation);
     try {
       return await operation;

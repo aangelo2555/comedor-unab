@@ -10,6 +10,8 @@ const path = require('path');
 const crypto = require('crypto');
 
 const db = require('./db');
+const { enrollment, admittedStudents, capacityError } = require('./student-capacity');
+const { WARMUP_LEAD_MS, REFRESH_LEAD_MS, PUBLICATION_POLL_MS, prepareSessions } = require('./session-preparation');
 const { TERMS_VERSION, servicePolicy } = require('./service-policy');
 const { MEALS, isPremium, compareQueue, validatePremium, createPremiumService } = require('./premium-service');
 const { RequestGate, retryDelay } = require('./upstream-control');
@@ -52,6 +54,7 @@ setInterval(() => {
 let engineGeneration = 0;
 let sentinelGeneration = 0;
 let warmupTimerId = null;
+let warmupRefreshTimerId = null;
 let sniperTimerId = null;
 let sniperPollIntervalId = null;
 let sentinelIntervalId = null;
@@ -126,11 +129,22 @@ function getLimaTimeString() {
 }
 
 function broadcastSSE(event, data) {
+  const personal = ['reservation-status-changed', 'advance-reservation-created', 'advance-reservation-cancelled'].includes(event);
+  let owner = data?.student || data?.alumnoCodigo;
+  if (personal && !owner && data?.id) {
+    const record = db.getAllReservations().find(item => item.id === data.id) ||
+      db.getAdvanceReservations().find(item => item.id === data.id);
+    owner = record?.alumnoCodigo;
+  }
   const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
   for (const client of sseClients) {
     try {
       if (!client.viewer || !sessions.has(sessionKey(client.viewer.token))) { client.end(); sseClients.delete(client); continue; }
-      if (client.viewer.role !== 'superadmin' && event === 'log') continue;
+      if (client.viewer.role !== 'superadmin') {
+        if (event === 'log' || event === 'sentinel-queue-updated') continue;
+        if (personal && owner !== client.viewer.username) continue;
+        if (event === 'reservation-batch-finished' && (!Array.isArray(data) || !data.some(item => item.user === client.viewer.username))) continue;
+      }
       client.write(client.viewer.role === 'superadmin' ? payload : `event: ${event}\ndata: {}\n\n`);
     } catch {
       sseClients.delete(client);
@@ -156,7 +170,7 @@ async function fetchUnabResponse(url, options = {}, retryable = true) {
         if (options.canProceed && !options.canProceed()) {
           return { ok: false, status: 409, data: { message: 'Solicitud cancelada o fuera de horario.' } };
         }
-        const { canProceed, priority, timeoutMs, ...fetchOptions } = options;
+        const { canProceed, priority, timeoutMs, skipProfile, ...fetchOptions } = options;
         const res = await fetch(url, { ...fetchOptions, signal: AbortSignal.timeout(timeoutMs || 20000) });
         const text = await res.text();
         let data;
@@ -215,7 +229,7 @@ async function authenticateUserWithUnab(userRecord, requestOptions = {}) {
     });
 
     // Profile refresh must not delay a valid reservation session.
-    fetchComedorApi('/auth/me', data.accessToken).then(profileRes => {
+    if (!requestOptions.skipProfile) fetchComedorApi('/auth/me', data.accessToken).then(profileRes => {
       if (!profileRes.ok || !profileRes.data?.data || db.findUserById(userRecord.id)?.legalConsent?.version !== TERMS_VERSION) return;
       const profile = profileRes.data.data;
       db.updateUser(userRecord.id, {
@@ -292,15 +306,15 @@ async function fetchComedorApi(endpoint, token, options = {}) {
   return result;
 }
 
-function isJwtExpired(token) {
+function isJwtExpired(token, minimumValidityMs = 120000) {
   if (!token) return true;
   try {
     const parts = token.split('.');
     if (parts.length !== 3) return true;
     const payload = JSON.parse(Buffer.from(parts[1], 'base64').toString('utf8'));
     if (!payload.exp) return false;
-    // Check if token expires within the next 2 minutes
-    return (payload.exp * 1000) < (Date.now() + 120000);
+    // Require validity through the requested preparation window
+    return (payload.exp * 1000) < (Date.now() + minimumValidityMs);
   } catch {
     return true;
   }
@@ -309,12 +323,19 @@ function isJwtExpired(token) {
 // Helper: Ensure user has valid UNAB token (instant in-memory check during burst, verified during warmup)
 const pendingUnabAuth = new Map();
 const authWarnings = new Map();
-async function getValidUnabToken(userRecord, forceVerify = false, requestOptions = {}) {
+async function getValidUnabToken(userRecord, forceVerify = false, requestOptions = {}, minimumValidityMs = 120000) {
   if (userRecord.legalConsent?.version !== TERMS_VERSION) return null;
   const key = userRecord.id;
-  if (pendingUnabAuth.has(key)) return pendingUnabAuth.get(key);
-  const pending = resolveUnabToken(userRecord, forceVerify, requestOptions);
-  pendingUnabAuth.set(key, pending);
+  const current = db.findUserById(key) || userRecord;
+  if (!forceVerify && current.unabToken && !isJwtExpired(current.unabToken, minimumValidityMs)) return current.unabToken;
+  if (pendingUnabAuth.has(key)) {
+    const preparation = pendingUnabAuth.get(key);
+    const token = await preparation.promise;
+    if (preparation.minimumValidityMs >= minimumValidityMs || !token || !isJwtExpired(token, minimumValidityMs)) return token;
+    return getValidUnabToken(userRecord, forceVerify, requestOptions, minimumValidityMs);
+  }
+  const pending = resolveUnabToken(userRecord, forceVerify, requestOptions, minimumValidityMs);
+  pendingUnabAuth.set(key, { promise: pending, minimumValidityMs });
   try {
     const token = await pending;
     if (token) authWarnings.delete(key);
@@ -322,19 +343,21 @@ async function getValidUnabToken(userRecord, forceVerify = false, requestOptions
   } finally { pendingUnabAuth.delete(key); }
 }
 
-async function resolveUnabToken(userRecord, forceVerify, requestOptions) {
+async function resolveUnabToken(userRecord, forceVerify, requestOptions, minimumValidityMs) {
   userRecord = db.findUserById(userRecord.id) || userRecord;
-  if (userRecord.unabToken && !isJwtExpired(userRecord.unabToken)) {
+  if (userRecord.unabToken && !isJwtExpired(userRecord.unabToken, minimumValidityMs)) {
     if (!forceVerify) return userRecord.unabToken;
     const test = await fetchComedorApi('/alumnos/me/elegibilidad', userRecord.unabToken);
     if (test.ok || ![401, 403].includes(test.status)) return userRecord.unabToken;
   }
-  const auth = await authenticateUserWithUnab(userRecord, requestOptions);
+  const auth = userRecord.password
+    ? await authenticateUserWithUnab(userRecord, requestOptions)
+    : { success: false, error: 'Vuelve a ingresar para preparar tu sesión institucional.' };
   if (auth.success) { authWarnings.delete(userRecord.id); return auth.token; }
   const last = authWarnings.get(userRecord.id) || 0;
   if (Date.now() - last > 60000) {
     authWarnings.set(userRecord.id, Date.now());
-    emitLog(`[AUTENTICACIÓN] ${userRecord.username} sigue pendiente porque UNAB no confirmó su sesión (${auth.status ? 'HTTP ' + auth.status : 'error de comunicación'}). Se conserva su posición original.`, 'warning');
+    emitLog(`[AUTENTICACIÓN] ${userRecord.username} sigue pendiente porque UNAB no confirmó su sesión (${auth.status ? 'HTTP ' + auth.status : 'error de comunicación'}). Se conserva su posición original. Si la sesión se perdió al reiniciar, el alumno debe volver a ingresar.`, 'warning');
   }
   return null;
 }
@@ -412,7 +435,7 @@ function getNextMealOpening() {
 
 function tickRailwayMasterScheduler() {
   if (!globalSniper.running) {
-    const queue = getAllPendingAdvanceReservations().filter(item => item.isSentinel);
+    const queue = getAllPendingAdvanceReservations().filter(item => item.isSentinel && item.admitted);
     if (queue.length) startSentinelWatch({ targetMeal: queue[0].meal, targetDate: queue[0].date });
   }
   // Guard: If Sentinel is running outside its active service window, stop it automatically!
@@ -432,12 +455,13 @@ function tickRailwayMasterScheduler() {
   const msUntil = next.msUntil;
 
   // Find active advance reservations for this upcoming meal and date
+  const eligible = new Set(admittedStudents(db.getAllUsers(false)).filter(user => user.active).map(user => user.username));
   const activeAdvance = db.getAdvanceReservations({ fecha: next.date, status: 'ACTIVA' })
-    .filter(a => a.tipoComida.toUpperCase() === next.meal.toUpperCase());
+    .filter(a => a.tipoComida.toUpperCase() === next.meal.toUpperCase() && eligible.has(a.alumnoCodigo));
 
   const hasAdvance = activeAdvance.length > 0;
   // Pre-arming window: 5 minutes before opening
-  const inArmingWindow = msUntil <= 5 * 60 * 1000 && msUntil > 0;
+  const inArmingWindow = msUntil <= WARMUP_LEAD_MS + 60000 && msUntil > 0;
 
   // USER RULE:
   // "el francotirador debe ser automático, en base si hay una reserva anticipada.
@@ -535,22 +559,27 @@ function startGlobalSniper(options = {}) {
   emitLog(`[FRANCOTIRADOR] Francotirador armado para ${globalSniper.targetMeal} del ${globalSniper.targetDate}. Hora programada: ${globalSniper.targetTime}.`, 'info');
   broadcastSSE('sniper-status', { ...globalSniper, sentinelActive: !!sentinelIntervalId });
 
-  // Prepare only this date/meal queue, using bounded workers before opening.
+  // Prepare sessions before opening and recheck late arrivals one minute before it.
   const warmupGeneration = engineGeneration;
   const warmupDate = globalSniper.targetDate;
   const warmupMeal = globalSniper.targetMeal;
-  const warmupMs = Math.max(0, msUntilTarget - 4 * 60 * 1000);
-  warmupTimerId = setTimeout(async () => {
-    if (engineGeneration !== warmupGeneration || !globalSniper.running) return;
-    emitLog('[WARMUP] Preparando sesiones de la cola del servicio...', 'info');
+  const isCurrentWarmup = () => engineGeneration === warmupGeneration && globalSniper.running && globalSniper.status === 'ARMED';
+  async function warmSessions(verifyRemote) {
+    if (!isCurrentWarmup()) return;
     const queue = db.getAdvanceReservations({ fecha: warmupDate, status: 'ACTIVA' })
       .filter(item => ['TODAS', 'INTELIGENTE'].includes(warmupMeal) || item.tipoComida.toUpperCase() === warmupMeal);
     const usernames = new Set(queue.map(item => item.alumnoCodigo));
-    const users = db.getAllUsers(false).filter(user => user.active && user.role !== 'superadmin' && usernames.has(user.username));
-    await mapWithConcurrency(users, 2, async user => {
-      if (engineGeneration === warmupGeneration && globalSniper.running) await getValidUnabToken(user, true);
-    });
-  }, warmupMs);
+    const users = admittedStudents(db.getAllUsers(false)).filter(user => user.active && usernames.has(user.username));
+    emitLog(`[WARMUP] Preparando ${users.length} sesiones antes de ${warmupMeal}...`, 'info');
+    try {
+      const result = await prepareSessions(users, { getToken: getValidUnabToken, canProceed: isCurrentWarmup, targetTs, isExpired: isJwtExpired, verifyRemote });
+      if (isCurrentWarmup()) emitLog(`[WARMUP] ${result.ready}/${result.total} sesiones preparadas con vigencia para la apertura.`, result.ready === result.total ? 'success' : 'warning');
+    } catch (error) { emitLog('[WARMUP] Preparación pendiente. Se volverá a comprobar la sesión al abrir.', 'warning'); }
+  }
+  warmupTimerId = setTimeout(() => warmSessions(true), Math.max(0, msUntilTarget - WARMUP_LEAD_MS));
+  if (msUntilTarget > REFRESH_LEAD_MS) {
+    warmupRefreshTimerId = setTimeout(() => warmSessions(false), msUntilTarget - REFRESH_LEAD_MS);
+  }
 
   // Trigger burst at target - leadTimeMs
   const triggerDelay = Math.max(0, msUntilTarget - globalSniper.leadTimeMs);
@@ -563,7 +592,9 @@ function stopGlobalSniper(quiet = false) {
   engineGeneration++;
   sentinelGeneration++;
   if (warmupTimerId) clearTimeout(warmupTimerId);
+  if (warmupRefreshTimerId) clearTimeout(warmupRefreshTimerId);
   warmupTimerId = null;
+  warmupRefreshTimerId = null;
   if (sniperTimerId) clearTimeout(sniperTimerId);
   if (sniperPollIntervalId) clearInterval(sniperPollIntervalId);
   if (sentinelIntervalId) clearInterval(sentinelIntervalId);
@@ -584,7 +615,7 @@ function getStudentsInSentinelQueue(filterDate = null, filterMeal = null) {
   const targetDate = filterDate || globalSniper.targetDate || getTodayLimaDate(0);
   const allRes = db.getAllReservations();
   const allAdvance = db.getAdvanceReservations({ fecha: targetDate, status: 'ACTIVA' });
-  const allUsers = db.getAllUsers(false).filter(u => u.active && u.autoSniper && u.role !== 'superadmin');
+  const allUsers = admittedStudents(db.getAllUsers(false)).filter(u => u.active && u.autoSniper);
 
   const queue = [];
 
@@ -620,6 +651,7 @@ function getStudentsInSentinelQueue(filterDate = null, filterMeal = null) {
         meal: adv.tipoComida.toUpperCase(),
         date: targetDate,
         createdAt: adv.createdAt,
+        registrationOrder: student.registrationOrder || enrollment(db.getAllUsers(false), student.id).position,
         premium: isPremium(student, targetDate)
       });
     } else {
@@ -650,6 +682,7 @@ function getAllPendingAdvanceReservations() {
     if (!alreadyConfirmed) {
       const inWindow = isMealInServiceWindow(adv.tipoComida, adv.fecha);
       const cfg = MEAL_CONFIGS[adv.tipoComida];
+      const membership = enrollment(allUsers, student?.id);
       list.push({
         advanceId: adv.id,
         studentUsername: adv.alumnoCodigo,
@@ -659,10 +692,12 @@ function getAllPendingAdvanceReservations() {
         meal: adv.tipoComida.toUpperCase(),
         date: adv.fecha,
         createdAt: adv.createdAt,
+        registrationOrder: student?.registrationOrder || membership.position,
         premium: isPremium(student, adv.fecha),
+        admitted: membership.admitted,
         authPending: authWarnings.has(student?.id),
         isSentinel: inWindow,
-        statusText: inWindow 
+        statusText: !membership.admitted ? 'Fuera del cupo de alumnos' : inWindow
           ? 'En Cola Centinela (Buscando Liberados)' 
           : `Reserva Anticipada (Disparo a las ${cfg?.horaInicio || '17:00'})`
       });
@@ -765,10 +800,10 @@ function startSentinelWatch(options = {}) {
       probeIndex++;
       const candidateStudent = db.findUserByUsername(candidateItem.studentUsername);
       if (!candidateStudent) return;
-      const probeToken = await getValidUnabToken(candidateStudent);
+      const probeToken = await getValidUnabToken(candidateStudent, false, { priority: 1, skipProfile: true });
       if (!probeToken) return;
 
-      const prog = await fetchComedorApi(`/programacion/me?date=${date}`, probeToken);
+      const prog = await fetchComedorApi(`/programacion/me?date=${date}`, probeToken, { priority: 1 });
       if (!prog.ok || !Array.isArray(prog.data?.data) || prog.data.data.length === 0) return;
 
       const menuFound = prog.data.data;
@@ -792,7 +827,7 @@ function startSentinelWatch(options = {}) {
           continue;
         }
 
-        const sToken = await getValidUnabToken(studentUser);
+        const sToken = await getValidUnabToken(studentUser, false, { priority: 1, skipProfile: true });
         if (!sToken) continue;
 
         const targetItem = menuFound.find(i => (i.tipoComida || '').toUpperCase() === item.meal.toUpperCase());
@@ -805,7 +840,7 @@ function startSentinelWatch(options = {}) {
           const result = await reserveOnce(studentUser.id, sToken, targetItem.id, date, item.meal,
             () => isCurrentRun() && canReserveService(studentUser, item.meal, date) &&
               db.getAdvanceReservations({ alumnoCodigo: item.studentUsername, fecha: date, status: 'ACTIVA' })
-                .some(advance => advance.id === item.advanceId));
+                .some(advance => advance.id === item.advanceId), { priority: 1 });
           if (result.ok && result.data?.success) {
             const ticket = result.data.data;
             db.recordReservation({
@@ -847,7 +882,7 @@ function startSentinelWatch(options = {}) {
     } finally {
       if (generation === sentinelGeneration) isSentinelRunningTick = false;
     }
-  }, 3000);
+  }, 1000);
 }
 
 function stopSentinelWatch(quiet = false) {
@@ -895,10 +930,9 @@ async function executeMultiUserBurst() {
 
   candidateAdvance.sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
   const advanceUsernames = new Set(candidateAdvance.map(a => a.alumnoCodigo));
-  const queueOrder = [...advanceUsernames];
-  const activeCandidates = db.getAllUsers(false).filter(u => 
+  const activeCandidates = admittedStudents(db.getAllUsers(false)).filter(u =>
     u.active && advanceUsernames.has(u.username) && u.role !== 'superadmin'
-  ).sort((a, b) => queueOrder.indexOf(a.username) - queueOrder.indexOf(b.username));
+  );
 
   if (activeCandidates.length === 0) {
     emitLog('No hay alumnos activos vinculados a las reservas anticipadas encontradas.', 'warning');
@@ -912,7 +946,7 @@ async function executeMultiUserBurst() {
   emitLog(`[DISPARO] Iniciado: Sondeando cupos para ${activeCandidates.length} alumno(s) con reserva anticipada [Modo: ${runMeal}]...`, 'warning');
 
   let attempts = 0;
-  const maxAttempts = 20; // Bounded initial polling before sentinel recovery
+  const maxAttempts = 60; // Short opening polling, then sentinel recovery
   let burstDispatched = false;
   let isPolling = false;
 
@@ -949,9 +983,9 @@ async function executeMultiUserBurst() {
     try {
       // Rotate the probe so one unavailable account cannot block the whole queue.
       const probeUser = activeCandidates[(attempts - 1) % activeCandidates.length];
-      const probeToken = await getValidUnabToken(probeUser);
+      const probeToken = await getValidUnabToken(probeUser, false, { priority: 1, skipProfile: true });
       if (!probeToken) return;
-      const prog = await fetchComedorApi(`/programacion/me?date=${runDate}`, probeToken);
+      const prog = await fetchComedorApi(`/programacion/me?date=${runDate}`, probeToken, { priority: 1 });
       if (!isCurrentRun()) return;
       if (prog.ok && Array.isArray(prog.data?.data) && prog.data.data.length > 0) {
         const targetMeal = runMeal?.toUpperCase();
@@ -976,7 +1010,7 @@ async function executeMultiUserBurst() {
         // Multi-Meal Intelligent Dispatch per Student
         const finalResults = await mapWithConcurrency(activeCandidates, 2, async (student) => {
           if (!isCurrentRun()) return { user: student.username, results: [{ success: false, message: 'Ejecución cancelada' }] };
-          const sToken = await getValidUnabToken(student);
+          const sToken = await getValidUnabToken(student, false, { priority: 1, skipProfile: true });
           if (!sToken) {
             emitLog(`[DISPARO] Autenticación UNAB pendiente para ${student.name} (${student.username}). La reserva seguirá en cola para reintentar.`, 'warning');
             return { user: student.username, results: [{ success: false, message: 'Autenticación UNAB pendiente. Se volverá a intentar desde la cola.' }] };
@@ -1013,7 +1047,7 @@ async function executeMultiUserBurst() {
             const result = await reserveOnce(student.id, sToken, targetItem.id, runDate, meal,
               () => isCurrentRun() && canReserveService(student, meal, runDate) &&
                 db.getAdvanceReservations({ alumnoCodigo: student.username, fecha: runDate, status: 'ACTIVA' })
-                  .some(item => item.tipoComida.toUpperCase() === meal));
+                  .some(item => item.tipoComida.toUpperCase() === meal), { priority: 1 });
             if (result.ok && result.data?.success) {
               const ticket = result.data.data;
               db.recordReservation({
@@ -1070,7 +1104,7 @@ async function executeMultiUserBurst() {
         isSniperBurstRunning = false;
       }
     }
-  }, 3000);
+  }, PUBLICATION_POLL_MS);
 }
 
 // Request Body Parser (safe and low memory)
@@ -1226,6 +1260,7 @@ const server = http.createServer(async (req, res) => {
       }
     } else {
       if (body.termsVersion !== TERMS_VERSION || body.processingConsent !== true) return sendJson(400, { error: 'Revisa los términos y autoriza el tratamiento para iniciar sesión.' });
+      if (!user && enrollment(db.getAllUsers(false)).available === 0) return sendJson(409, { success: false, error: capacityError().message });
       // 2. Student Login: Validate & self-register via official UNAB API
       const authResult = await authenticateStudentDirect(cleanUsername, password);
       if (!authResult.success) {
@@ -1240,7 +1275,7 @@ const server = http.createServer(async (req, res) => {
         user = db.findUserByUsername(cleanUsername);
         if (!user) {
           // Auto-register student immediately in database
-          user = db.addUser({
+          try { user = db.addUser({
             username: cleanUsername,
             password: password,
             role: 'user',
@@ -1251,7 +1286,9 @@ const server = http.createServer(async (req, res) => {
             autoSniper: true,
             targetMeal: 'ALMUERZO',
             unabToken: authResult.token
-          });
+          }); } catch (error) { return sendJson(error.status || 400, { success: false, error: error.message }); }
+          db.updateUser(user.id, { unabToken: authResult.token });
+          user = db.findUserById(user.id);
           emitLog(`Nuevo estudiante auto-registrado con cuenta UNAB: ${user.name} (${cleanUsername}).`, 'info');
         } else {
           // Existing student: update token, password and profile data
@@ -1291,7 +1328,7 @@ const server = http.createServer(async (req, res) => {
     return sendJson(200, {
       success: true,
       token,
-      user: safeUser
+      user: { ...safeUser, ...(user.role !== 'superadmin' ? { enrollment: enrollment(db.getAllUsers(false), user.id) } : {}) }
     });
   }
 
@@ -1304,7 +1341,7 @@ const server = http.createServer(async (req, res) => {
     if (!user) return sendJson(401, { authenticated: false });
 
     const { password, unabToken, ...safeUser } = user;
-    return sendJson(200, { authenticated: true, user: safeUser });
+    return sendJson(200, { authenticated: true, user: { ...safeUser, ...(user.role !== 'superadmin' ? { enrollment: enrollment(db.getAllUsers(false), user.id) } : {}) } });
   }
 
   // POST /api/auth/logout
@@ -1404,7 +1441,7 @@ const server = http.createServer(async (req, res) => {
         const created = db.addUser(body);
         return sendJson(201, { success: true, user: created });
       } catch (e) {
-        return sendJson(400, { success: false, error: e.message });
+        return sendJson(e.status || 400, { success: false, error: e.message });
       }
     }
 
@@ -1417,7 +1454,7 @@ const server = http.createServer(async (req, res) => {
         const updated = db.updateUser(userId, body);
         return sendJson(200, { success: true, user: updated });
       } catch (e) {
-        return sendJson(400, { success: false, error: e.message });
+        return sendJson(e.status || 400, { success: false, error: e.message });
       }
     }
 
@@ -1428,7 +1465,7 @@ const server = http.createServer(async (req, res) => {
         db.deleteUser(userId);
         return sendJson(200, { success: true });
       } catch (e) {
-        return sendJson(400, { success: false, error: e.message });
+        return sendJson(e.status || 400, { success: false, error: e.message });
       }
     }
 
@@ -1513,6 +1550,8 @@ const server = http.createServer(async (req, res) => {
     if (req.method === 'PUT') {
       const body = await parseJsonBody(req);
       if (!Array.isArray(body.meals) || body.meals.some(meal => !MEALS.includes(meal))) return sendJson(400, { error: 'Selecciona servicios válidos.' });
+      const membership = enrollment(db.getAllUsers(false), user.id);
+      if (body.meals.length && !membership.admitted) return sendJson(409, { error: capacityError().message, enrollment: membership });
       if (body.meals.length && user.legalConsent?.version !== TERMS_VERSION) return sendJson(400, { error: 'Vuelve a iniciar sesión para revisar y autorizar el tratamiento de tus datos.' });
       if (body.meals.length && (body.termsVersion !== TERMS_VERSION || body.automationConsent !== true)) return sendJson(400, { error: 'Autoriza expresamente las solicitudes diarias para activar la automatización gratuita.' });
       db.updateUser(user.id, {
@@ -1531,6 +1570,15 @@ const server = http.createServer(async (req, res) => {
           authPending: item.status === 'ACTIVA' && authWarnings.has(user.id) };
       });
     return sendJson(200, { success: true, premium: user.premium || { enabled: false, meals: [], endDate: '' }, active: isPremium(user), appointments, automationConsent: user.automationConsent || null, paymentRequest: user.premiumRequest || null });
+  }
+
+  if (pathname === '/api/student/enrollment' && req.method === 'GET') {
+    if (!session) return sendJson(401, { error: 'Autenticación requerida' });
+    const user = db.findUserById(session.userId);
+    if (!user || user.role === 'superadmin') return sendJson(403, { error: 'Acceso de estudiante requerido' });
+    const membership = enrollment(db.getAllUsers(false), user.id);
+    const sessionNeedsLogin = membership.admitted && (user.legalConsent?.version !== TERMS_VERSION || (!user.password && isJwtExpired(user.unabToken)));
+    return sendJson(200, { enrollment: membership, sessionNeedsLogin });
   }
 
   // GET /api/student/advance-reservations?fecha=YYYY-MM-DD
@@ -1554,6 +1602,9 @@ const server = http.createServer(async (req, res) => {
     if (!session) return sendJson(401, { error: 'Autenticación requerida' });
     const user = db.findUserById(session.userId);
     if (!user) return sendJson(401, { error: 'Usuario no encontrado' });
+
+    const membership = enrollment(db.getAllUsers(false), user.id);
+    if (!membership.admitted) return sendJson(409, { error: capacityError().message, enrollment: membership });
 
     const body = await parseJsonBody(req);
     const meal = (body.meal || 'ALMUERZO').toUpperCase();
@@ -1748,6 +1799,9 @@ const server = http.createServer(async (req, res) => {
     const user = db.findUserById(session.userId);
     if (!user) return sendJson(401, { error: 'Usuario no encontrado' });
 
+    const membership = enrollment(db.getAllUsers(false), user.id);
+    if (!membership.admitted) return sendJson(409, { error: capacityError().message, enrollment: membership });
+
     const token = await getValidUnabToken(user);
     if (!token) return sendJson(401, { error: 'No se pudo conectar a UNAB' });
 
@@ -1817,8 +1871,9 @@ const server = http.createServer(async (req, res) => {
   // GET /api/sniper/status
   if (pathname === '/api/sniper/status' && req.method === 'GET') {
     const nextOpening = getNextMealOpening();
+    const eligible = new Set(admittedStudents(db.getAllUsers(false)).filter(user => user.active).map(user => user.username));
     const activeAdvanceForNext = db.getAdvanceReservations({ fecha: nextOpening.date, status: 'ACTIVA' })
-      .filter(a => a.tipoComida.toUpperCase() === nextOpening.meal.toUpperCase());
+      .filter(a => a.tipoComida.toUpperCase() === nextOpening.meal.toUpperCase() && eligible.has(a.alumnoCodigo));
     const sentinelQueue = getStudentsInSentinelQueue(globalSniper.targetDate, globalSniper.targetMeal);
     const allPending = getAllPendingAdvanceReservations();
 
@@ -1836,7 +1891,7 @@ const server = http.createServer(async (req, res) => {
         msUntil: nextOpening.msUntil
       },
       railwaySchedulerActive: true,
-      activeCandidatesCount: db.getAllUsers(true).filter(u => u.active && u.autoSniper).length,
+      activeCandidatesCount: admittedStudents(db.getAllUsers(false)).filter(u => u.active && u.autoSniper).length,
       serverTime: getLimaTimeString()
     });
   }

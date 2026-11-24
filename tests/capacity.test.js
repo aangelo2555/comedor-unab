@@ -5,7 +5,11 @@ const fs = require('node:fs');
 const path = require('node:path');
 const { RequestGate, retryDelay } = require('../upstream-control');
 const { createReservationService } = require('../reservation-service');
-Object.assign(process.env, { SERVICE_OPERATOR: 'Test operator', SERVICE_CONTACT_EMAIL: 'test@example.test', INSTITUTION_INTEGRATION_AUTHORIZED: 'true' });
+Object.assign(process.env, {
+  SERVICE_OPERATOR: 'Test operator',
+  SERVICE_CONTACT_EMAIL: 'test@example.test',
+  INSTITUTION_INTEGRATION_AUTHORIZED: 'true'
+});
 
 const wait = (milliseconds) =>
   new Promise((resolve) => setTimeout(resolve, milliseconds));
@@ -71,7 +75,7 @@ test('concurrent reservation attempts reconcile a lost response and share a sing
   assert.equal(posts, 1);
 });
 
-test('100 students across three services and two dates keep queues separate under upstream failures', async () => {
+test('50 admitted students across three services and two dates retain 50 existing accounts outside the cap', async () => {
   const students = Array.from({ length: 100 }, (_, index) => ({
     id: String(index),
     username: String(index),
@@ -127,7 +131,7 @@ test('100 students across three services and two dates keep queues separate unde
   const intervals = [];
   const remoteTickets = new Map();
   const posts = new Map();
-  const quotas = { DESAYUNO: 100, ALMUERZO: 70, CENA: 40 };
+  const quotas = { DESAYUNO: 50, ALMUERZO: 35, CENA: 20 };
   let unavailableAuth = true;
   let active = 0;
   let peak = 0;
@@ -170,7 +174,7 @@ test('100 students across three services and two dates keep queues separate unde
         await wait(requestCount % 9 === 0 ? 8 : 1);
         if (url.includes('/auth/login')) {
           const user = JSON.parse(options.body).UserName;
-          if (unavailableAuth && Number(user) >= 98)
+          if (unavailableAuth && Number(user) >= 48)
             return Response.json(
               { message: 'temporary login failure' },
               { status: 401 }
@@ -293,7 +297,7 @@ test('100 students across three services and two dates keep queues separate unde
       ).length;
       assert.equal(
         beforeRecovery,
-        Math.min(quotas[meal], unavailableAuth ? 98 : 100)
+        Math.min(quotas[meal], unavailableAuth ? 48 : 50)
       );
       assert.ok(
         advances
@@ -306,9 +310,9 @@ test('100 students across three services and two dates keep queues separate unde
               )
           )
       );
-      if (beforeRecovery < 100) {
+      if (beforeRecovery < 50) {
         unavailableAuth = false;
-        quotas[meal] = 100;
+        quotas[meal] = 50;
         await intervals.at(-1)();
       }
       assert.equal(
@@ -318,18 +322,24 @@ test('100 students across three services and two dates keep queues separate unde
             item.tipoComida === meal &&
             item.status === 'CONFIRMADA'
         ).length,
-        100
+        50
       );
     }
   assert.equal(duplicateWrites, 0);
-  assert.equal(remoteTickets.size, 600);
-  assert.equal(reservations.length, 600);
+  assert.equal(students.length, 100);
+  assert.ok(
+    advances
+      .filter((item) => Number(item.alumnoCodigo) >= 50)
+      .every((item) => item.status === 'ACTIVA')
+  );
+  assert.equal(remoteTickets.size, 300);
+  assert.equal(reservations.length, 300);
   assert.ok(peak <= 2, `peak upstream concurrency ${peak}`);
   // Rejected writes may be retried after capacity changes. Committed writes must occur once.
   for (const [key, ticket] of remoteTickets)
     assert.ok(posts.get(key) <= 2, key);
   console.log(
-    `Simulated 600 confirmed tickets, ${requestCount} upstream requests, peak concurrency ${peak}`
+    `Simulated 300 confirmed tickets, ${requestCount} upstream requests, peak concurrency ${peak}`
   );
 });
 
@@ -398,4 +408,52 @@ test('shared request queue rejects overload and continues serving existing work'
   release();
   await blocked;
   assert.equal(await queued, 'served');
+});
+
+test('opening work gets the next available slot ahead of ordinary reads', async () => {
+  const gate = new RequestGate({ concurrency: 1, intervalMs: 1 });
+  let release;
+  const started = [];
+  const running = gate.run(
+    () =>
+      new Promise((resolve) => {
+        release = resolve;
+      })
+  );
+  const ordinary = gate.run(async () => {
+    started.push('ordinary');
+  });
+  const opening = gate.run(async () => {
+    started.push('opening');
+  }, 1);
+  await new Promise((resolve) => setImmediate(resolve));
+  release();
+  await Promise.all([running, ordinary, opening]);
+  assert.deepEqual(started, ['opening', 'ordinary']);
+});
+
+test('reservation verification and submission carry opening priority through the shared budget', async () => {
+  const calls = [];
+  const reserve = createReservationService(async (url, token, options) => {
+    calls.push({ url, options });
+    if (!options?.method) return { ok: true, status: 200, data: { data: [] } };
+    return {
+      ok: true,
+      status: 200,
+      data: { success: true, data: { id: 'ticket' } }
+    };
+  });
+  const result = await reserve(
+    'student',
+    'token',
+    'program',
+    '2026-11-24',
+    'CENA',
+    () => true,
+    { priority: 1 }
+  );
+  assert.equal(result.ok, true);
+  assert.equal(calls.length, 2);
+  assert.ok(calls.every((call) => call.options.priority === 1));
+  assert.equal(calls[1].options.method, 'POST');
 });

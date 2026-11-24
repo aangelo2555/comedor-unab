@@ -1,4 +1,5 @@
 const { mapWithConcurrency } = require('./reservation-service');
+const { enrollment } = require('./student-capacity');
 const MEALS = ['DESAYUNO', 'ALMUERZO', 'CENA'];
 
 function limaDate(now = Date.now()) {
@@ -11,6 +12,7 @@ function isPremium(user, date = limaDate()) {
 
 function compareQueue(a, b) {
   return (
+    (a.registrationOrder || Number.MAX_SAFE_INTEGER) - (b.registrationOrder || Number.MAX_SAFE_INTEGER) ||
     String(a.createdAt || '').localeCompare(String(b.createdAt || '')) ||
     String(a.id || '').localeCompare(String(b.id || ''))
   );
@@ -127,6 +129,7 @@ function createPremiumService({
         .getAllUsers(false)
         .filter((user) => user.role !== 'superadmin');
       for (const user of users) {
+        if (!enrollment(users, user.id).admitted) continue;
         const plan = user.premium;
         if (!plan) continue;
         const enabled = user.active && isPremium(user, today);

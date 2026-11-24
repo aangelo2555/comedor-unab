@@ -1388,3 +1388,8 @@ body:not(.admin-session) .brand-logo { width: 30px; height: 34px; }
 }
 
 #panel-student .tab-link { padding-left: 10px; padding-right: 10px; gap: 5px; }
+
+.student-enrollment { display: flex; flex-direction: column; gap: 4px; padding: 14px 18px; margin: 8px 0 12px; border: 1px solid #ffffff80; border-radius: 18px; background: #ffffff70; }
+.student-enrollment strong { font-size: 15px; }
+.student-enrollment span { font-size: 12px; line-height: 1.5; color: #294c6a; }
+.premium-session .student-enrollment { background: #f0f7ff; }

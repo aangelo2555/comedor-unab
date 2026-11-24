@@ -170,6 +170,7 @@ function setPageTheme(color) {
 }
 
 function showLoginView() {
+  document.getElementById('studentEnrollment').hidden = true;
   document.getElementById('btnRevokeAuthorization').hidden = true;
   eventStream?.close();
   eventStream = null;
@@ -196,6 +197,11 @@ function showAppView(user) {
 
   document.getElementById('topUserName').textContent = user.name || user.username;
   const roleBadge = document.getElementById('userRoleBadge');
+  document.getElementById('studentEnrollment').hidden = user.role === 'superadmin';
+  if (user.role !== 'superadmin') {
+    renderEnrollment(user.enrollment);
+    loadEnrollment();
+  }
 
   document.getElementById('panel-premium').style.display = 'none';
   document.body.classList.remove('premium-session');
@@ -840,6 +846,8 @@ async function loadStudentMealCards(targetDate) {
             </div>
           `;
         }
+      } else if (currentAuth?.enrollment?.admitted === false) {
+        buttonHtml = '<button class="btn-unab-disabled" disabled>Cupo de alumnos completo</button>';
       } else if (isPastCutoff) {
         buttonHtml = `
           <button class="btn-unab-disabled" disabled>
@@ -1392,3 +1400,32 @@ function renderPremiumRequests(appointments) {
     container.append(card);
   }
 }
+
+function renderEnrollment(value, sessionNeedsLogin = false) {
+  if (!value) return;
+  document.getElementById('studentEnrollmentPosition').textContent = value.admitted
+    ? `Tu registro: ${value.position} de ${value.limit}`
+    : `Tu registro: ${value.position} · Cupo de ${value.limit} alumnos completo`;
+  document.getElementById('studentEnrollmentDetail').textContent = value.admitted
+    ? `${value.total} alumnos registrados. La prioridad corresponde al orden de registro.`
+    : 'Tu cuenta se conserva. Las reservas están disponibles para los primeros registros dentro del cupo.';
+  document.getElementById('btnRefreshInstitutionalSession').hidden = !sessionNeedsLogin;
+  if (sessionNeedsLogin) document.getElementById('studentEnrollmentDetail').textContent += ' Vuelve a ingresar para preparar tu sesión institucional antes de la apertura.';
+}
+
+async function loadEnrollment() {
+  const userId = currentAuth?.id;
+  if (!userId || currentAuth.role === 'superadmin') return;
+  try {
+    const response = await fetch('/api/student/enrollment', { headers: authHeaders() });
+    const data = await response.json();
+    if (!response.ok || currentAuth?.id !== userId || !data.enrollment) return;
+    const previous = currentAuth.enrollment?.admitted;
+    currentAuth.enrollment = data.enrollment;
+    renderEnrollment(data.enrollment, data.sessionNeedsLogin);
+    if (previous !== undefined && previous !== data.enrollment.admitted) loadStudentMealCards(studentViewDate);
+  } catch (_) {}
+}
+setInterval(() => { if (currentAuth && currentAuth.role !== 'superadmin') loadEnrollment(); }, 60000);
+
+document.getElementById('btnRefreshInstitutionalSession').addEventListener('click', () => document.getElementById('btnLogout').click());

@@ -52,3 +52,24 @@ Para Docker Compose configura de forma privada `POSTGRES_PASSWORD`, `ADMIN_EMAIL
 Ejecuta `node --test tests/*.test.js`. Las pruebas de red utilizan respuestas simuladas. Las pruebas de integración PostgreSQL requieren `PG_TEST_CONFIG` con la ruta a un archivo privado con las variables de una instancia de pruebas y permiso para crear y eliminar bases aisladas. No uses la base de producción para esas pruebas.
 
 Los términos describen el comportamiento implementado y sus pendientes. El cambio de marca y el modelo de aportes no constituyen una certificación de legalidad.
+
+
+## Cupo y orden de registro
+
+El límite es de 50 alumnos. Las cuentas de administración quedan fuera del cupo. La antigüedad de las cuentas de alumnos se guarda con un orden de registro persistente. En cuentas anteriores, se utiliza la fecha de creación disponible y se conserva el orden del archivo para registros sin fecha. Los registros nuevos se añaden al final.
+
+El registro normal y el registro desde administración comprueban el cupo. La comprobación final se repite al guardar, después de autenticar con la institución, para impedir que dos registros simultáneos ocupen la última plaza. El alumno ve su posición y el límite en su panel.
+
+Si ya existen más de 50 alumnos, sus cuentas y solicitudes permanecen guardadas. Los primeros 50 registros participan en nuevas reservas y automatizaciones. El resto puede ingresar y consultar su posición, con las nuevas reservas bloqueadas. Las cuentas desactivadas conservan su lugar de registro. Las cancelaciones previamente autorizadas de tickets existentes siguen su flujo habitual.
+
+Las solicitudes de cada comida se procesan por antigüedad de registro y después por fecha de solicitud. Los aportes voluntarios permanecen independientes de ese orden.
+
+## Preparación de sesiones y apertura
+
+La preparación comienza cinco minutos antes de la apertura. Se vuelve a revisar la cola un minuto antes para incorporar alumnos recién ingresados y renovar tokens próximos a vencer. La vigencia requerida cubre la apertura y al menos dos minutos posteriores. Se utilizan dos trabajadores de preparación y se omite la consulta opcional del perfil durante ese paso.
+
+La comprobación del último minuto utiliza los tokens vigentes directamente y renueva los que lo necesitan. Una sesión ya preparada puede reservar mientras termina una comprobación de fondo. Las credenciales institucionales se conservan en memoria, por lo que un reinicio puede exigir que el alumno vuelva a ingresar. Su panel indica cuándo necesita hacerlo.
+
+El sondeo inicial de publicación se programa cada 250 ms, sujeto al presupuesto global de peticiones. El centinela revisa cada segundo cuando está libre. Las operaciones de apertura tienen preferencia sobre consultas ordinarias dentro de ese presupuesto. El límite inicial continúa siendo dos peticiones simultáneas, con 500 ms entre inicios. Los errores temporales y `Retry-After` mantienen sus esperas.
+
+El primer procesamiento comienza al detectar el servicio. El tiempo total depende del ritmo permitido y de UNAB. Con dos inicios por segundo, 50 envíos requieren al menos 25 segundos, además de las verificaciones de tickets y la latencia de las respuestas.
