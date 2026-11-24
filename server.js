@@ -130,7 +130,7 @@ function getLimaTimeString() {
 }
 
 function broadcastSSE(event, data) {
-  const personal = ['reservation-status-changed', 'advance-reservation-created', 'advance-reservation-cancelled'].includes(event);
+  const personal = ['reservation-status-changed', 'advance-reservation-created', 'advance-reservation-cancelled', 'institutional-session-required'].includes(event);
   let owner = data?.student || data?.alumnoCodigo;
   if (personal && !owner && data?.id) {
     const record = db.getAllReservations().find(item => item.id === data.id) ||
@@ -298,11 +298,33 @@ function isJwtExpired(token, minimumValidityMs = 120000) {
 const pendingUnabAuth = new Map();
 const authWarnings = new Map();
 const authRetryState = new Map();
+const authIssues = new Map();
+function noteAuthIssue(user, code, status) {
+  const previous = authIssues.get(user.id);
+  const requiresLogin = ['LOGIN_REQUIRED', 'CONSENT_REQUIRED', 'CREDENTIALS_REJECTED'].includes(code);
+  authIssues.set(user.id, { code, requiresLogin });
+  const last = authWarnings.get(user.id) || 0;
+  if (previous?.code === code && (requiresLogin || Date.now() - last <= 60000)) return;
+  authWarnings.set(user.id, Date.now());
+  const reason = code === 'LOGIN_REQUIRED' ? 'sesión institucional ausente o vencida y sin credenciales en memoria; el alumno debe volver a ingresar'
+    : code === 'CONSENT_REQUIRED' ? 'el alumno debe volver a ingresar y revisar la autorización'
+    : code === 'CREDENTIALS_REJECTED' ? 'la institución rechazó las credenciales; el alumno debe volver a ingresar'
+    : code === 'MISSING_SESSION_TOKEN' ? `HTTP ${status} sin token de sesión; se reintentará con pausa`
+    : status ? `la institución respondió HTTP ${status}; se reintentará con pausa`
+    : 'fallo interno al preparar la sesión; requiere revisión';
+  emitLog(`[AUTENTICACIÓN] ${user.username}: ${reason}. La solicitud y su prioridad se conservan.`, 'warning');
+  if (requiresLogin) broadcastSSE('institutional-session-required', { student: user.username });
+}
+function clearAuthIssue(id) {
+  authWarnings.delete(id);
+  authIssues.delete(id);
+  authRetryState.delete(id);
+}
 async function getValidUnabToken(userRecord, forceVerify = false, requestOptions = {}, minimumValidityMs = 120000) {
-  if (userRecord.legalConsent?.version !== TERMS_VERSION) return null;
+  if (userRecord.legalConsent?.version !== TERMS_VERSION) { noteAuthIssue(userRecord, 'CONSENT_REQUIRED'); return null; }
   const key = userRecord.id;
   const current = db.findUserById(key) || userRecord;
-  if (!forceVerify && current.unabToken && !isJwtExpired(current.unabToken, minimumValidityMs)) return current.unabToken;
+  if (!forceVerify && current.unabToken && !isJwtExpired(current.unabToken, minimumValidityMs)) { clearAuthIssue(key); return current.unabToken; }
   if (pendingUnabAuth.has(key)) {
     const preparation = pendingUnabAuth.get(key);
     const token = await preparation.promise;
@@ -314,7 +336,7 @@ async function getValidUnabToken(userRecord, forceVerify = false, requestOptions
   pendingUnabAuth.set(key, { promise: pending, minimumValidityMs });
   try {
     const token = await pending;
-    if (token) authWarnings.delete(key);
+    if (token) clearAuthIssue(key);
     return token;
   } finally { pendingUnabAuth.delete(key); }
 }
@@ -327,17 +349,15 @@ async function resolveUnabToken(userRecord, forceVerify, requestOptions, minimum
     if (test.ok || ![401, 403].includes(test.status)) return userRecord.unabToken;
     db.updateUser(userRecord.id, { unabToken: '' });
   }
-  const auth = userRecord.password
-    ? await authenticateUserWithUnab(userRecord, requestOptions)
-    : { success: false, error: 'Vuelve a ingresar para preparar tu sesión institucional.' };
-  if (auth.success) { authWarnings.delete(userRecord.id); authRetryState.delete(userRecord.id); return auth.token; }
+  if (!userRecord.password) {
+    noteAuthIssue(userRecord, 'LOGIN_REQUIRED');
+    return null;
+  }
+  const auth = await authenticateUserWithUnab(userRecord, requestOptions);
+  if (auth.success) { clearAuthIssue(userRecord.id); return auth.token; }
   const failures = Math.min((authRetryState.get(userRecord.id)?.failures || 0) + 1, 4);
   authRetryState.set(userRecord.id, { failures, until: Date.now() + Math.min(30000, 5000 * 2 ** (failures - 1)) });
-  const last = authWarnings.get(userRecord.id) || 0;
-  if (Date.now() - last > 60000) {
-    authWarnings.set(userRecord.id, Date.now());
-    emitLog(`[AUTENTICACIÓN] ${userRecord.username} sigue pendiente porque UNAB no confirmó su sesión (${auth.code === 'MISSING_SESSION_TOKEN' ? 'HTTP ' + auth.status + ' sin token de sesión' : auth.status ? 'HTTP ' + auth.status : 'error de comunicación'}). Se conserva su posición original. Si la sesión se perdió al reiniciar, el alumno debe volver a ingresar.`, 'warning');
-  }
+  noteAuthIssue(userRecord, auth.code || (auth.status === 401 ? 'CREDENTIALS_REJECTED' : 'AUTHENTICATION_FAILED'), auth.status);
   return null;
 }
 
@@ -434,7 +454,7 @@ function tickRailwayMasterScheduler() {
   const msUntil = next.msUntil;
 
   // Find active advance reservations for this upcoming meal and date
-  const eligible = new Set(admittedStudents(db.getAllUsers(false)).filter(user => user.active).map(user => user.username));
+  const eligible = new Set(admittedStudents(db.getAllUsers(false)).filter(user => user.active && user.autoSniper).map(user => user.username));
   const activeAdvance = db.getAdvanceReservations({ fecha: next.date, status: 'ACTIVA' })
     .filter(a => a.tipoComida.toUpperCase() === next.meal.toUpperCase() && eligible.has(a.alumnoCodigo));
 
@@ -548,7 +568,7 @@ function startGlobalSniper(options = {}) {
     const queue = db.getAdvanceReservations({ fecha: warmupDate, status: 'ACTIVA' })
       .filter(item => ['TODAS', 'INTELIGENTE'].includes(warmupMeal) || item.tipoComida.toUpperCase() === warmupMeal);
     const usernames = new Set(queue.map(item => item.alumnoCodigo));
-    const users = admittedStudents(db.getAllUsers(false)).filter(user => user.active && usernames.has(user.username));
+    const users = admittedStudents(db.getAllUsers(false)).filter(user => user.active && user.autoSniper && usernames.has(user.username));
     emitLog(`[WARMUP] Preparando ${users.length} sesiones antes de ${warmupMeal}...`, 'info');
     try {
       const result = await prepareSessions(users, { getToken: getValidUnabToken, canProceed: isCurrentWarmup, targetTs, isExpired: isJwtExpired, verifyRemote });
@@ -617,6 +637,7 @@ function getAllPendingAdvanceReservations() {
       const cfg = MEAL_CONFIGS[adv.tipoComida];
       const membership = enrollment(allUsers, student?.id);
       const eligible = Boolean(student?.active && student.autoSniper && membership.admitted);
+      const sessionNeedsLogin = Boolean(student && (authIssues.get(student.id)?.requiresLogin || student.legalConsent?.version !== TERMS_VERSION || (!student.password && isJwtExpired(student.unabToken))));
       list.push({
         advanceId: adv.id,
         studentUsername: adv.alumnoCodigo,
@@ -630,7 +651,8 @@ function getAllPendingAdvanceReservations() {
         premium: isPremium(student, adv.fecha),
         admitted: membership.admitted,
         eligible,
-        authPending: authWarnings.has(student?.id),
+        authPending: sessionNeedsLogin || authWarnings.has(student?.id),
+        sessionNeedsLogin,
         isSentinel: eligible && inWindow,
         statusText: !membership.admitted ? 'Fuera del cupo de alumnos' : !student?.active ? 'Cuenta inactiva' : !student.autoSniper ? 'Automatización pausada' : inWindow
           ? 'En Cola Centinela (Buscando Liberados)' 
@@ -880,7 +902,7 @@ async function executeMultiUserBurst() {
   candidateAdvance.sort((a, b) => String(a.createdAt || '').localeCompare(String(b.createdAt || '')));
   const advanceUsernames = new Set(candidateAdvance.map(a => a.alumnoCodigo));
   const activeCandidates = admittedStudents(db.getAllUsers(false)).filter(u =>
-    u.active && advanceUsernames.has(u.username) && u.role !== 'superadmin'
+    u.active && u.autoSniper && advanceUsernames.has(u.username) && u.role !== 'superadmin'
   ).sort((a, b) => compareQueue(
     { premium: isPremium(a, runDate), registrationOrder: a.registrationOrder },
     { premium: isPremium(b, runDate), registrationOrder: b.registrationOrder }
@@ -903,6 +925,8 @@ async function executeMultiUserBurst() {
   let isPolling = false;
 
   let waitingForMealLogged = false;
+  let publicationChecks = 0;
+  let publicationErrors = 0;
 
   sniperPollIntervalId = setInterval(async () => {
     if (generation !== engineGeneration) return;
@@ -923,7 +947,9 @@ async function executeMultiUserBurst() {
       isPolling = false;
       if (globalSniper.status === 'RESERVING' && !burstDispatched) {
         if (isMealInServiceWindow(runMeal, runDate)) {
-          emitLog('[DISPARO] Ráfaga inicial completada sin detectar publicación. Activando Centinela para capturar cupos liberados durante la ventana...', 'info');
+          emitLog(publicationChecks === 0
+            ? (publicationErrors === 0 ? '[DISPARO] No se pudo consultar la programación: ninguna sesión institucional estuvo lista. Las solicitudes siguen pendientes; Centinela continuará comprobando las sesiones.' : '[DISPARO] La institución no permitió verificar la programación. Las solicitudes siguen pendientes; Centinela volverá a consultar.')
+            : '[DISPARO] La programación consultada aún no contiene el servicio solicitado. Las solicitudes siguen pendientes en Centinela.', 'info');
           startSentinelWatch({ targetMeal: runMeal, targetDate: runDate });
         } else {
           stopGlobalSniper(true);
@@ -936,9 +962,13 @@ async function executeMultiUserBurst() {
       // Rotate the probe so one unavailable account cannot block the whole queue.
       const probeUser = activeCandidates[(attempts - 1) % activeCandidates.length];
       const probeToken = await getValidUnabToken(probeUser, false, { priority: 1, skipProfile: true });
-      if (!probeToken) return;
+      if (!probeToken) {
+        if (activeCandidates.every(user => authIssues.get(user.id)?.requiresLogin)) attempts = maxAttempts;
+        return;
+      }
       const prog = await fetchComedorApi(`/programacion/me?date=${runDate}`, probeToken, { priority: 1 });
       if (!isCurrentRun()) return;
+      if (prog.ok && Array.isArray(prog.data?.data)) publicationChecks++; else publicationErrors++;
       if (prog.ok && Array.isArray(prog.data?.data) && prog.data.data.length > 0) {
         const targetMeal = runMeal?.toUpperCase();
         const needsSpecificMeal = targetMeal && !['TODAS', 'INTELIGENTE'].includes(targetMeal);
@@ -1261,6 +1291,7 @@ const server = http.createServer(async (req, res) => {
       return sendJson(403, { success: false, error: 'Tu cuenta ha sido desactivada por el administrador.' });
     }
 
+    if (user.role !== 'superadmin' && user.unabToken && !isJwtExpired(user.unabToken)) clearAuthIssue(user.id);
     if (user.role !== 'superadmin') db.updateUser(user.id, { legalConsent: { version: TERMS_VERSION, acceptedAt: new Date().toISOString(), processing: true } });
 
     // Create session token
@@ -1525,7 +1556,7 @@ const server = http.createServer(async (req, res) => {
     const user = db.findUserById(session.userId);
     if (!user || user.role === 'superadmin') return sendJson(403, { error: 'Acceso de estudiante requerido' });
     const membership = enrollment(db.getAllUsers(false), user.id);
-    const sessionNeedsLogin = membership.admitted && (user.legalConsent?.version !== TERMS_VERSION || (!user.password && isJwtExpired(user.unabToken)));
+    const sessionNeedsLogin = membership.admitted && (authIssues.get(user.id)?.requiresLogin || user.legalConsent?.version !== TERMS_VERSION || (!user.password && isJwtExpired(user.unabToken)));
     return sendJson(200, { enrollment: membership, sessionNeedsLogin });
   }
 
@@ -1819,7 +1850,7 @@ const server = http.createServer(async (req, res) => {
   // GET /api/sniper/status
   if (pathname === '/api/sniper/status' && req.method === 'GET') {
     const nextOpening = getNextMealOpening();
-    const eligible = new Set(admittedStudents(db.getAllUsers(false)).filter(user => user.active).map(user => user.username));
+    const eligible = new Set(admittedStudents(db.getAllUsers(false)).filter(user => user.active && user.autoSniper).map(user => user.username));
     const activeAdvanceForNext = db.getAdvanceReservations({ fecha: nextOpening.date, status: 'ACTIVA' })
       .filter(a => a.tipoComida.toUpperCase() === nextOpening.meal.toUpperCase() && eligible.has(a.alumnoCodigo));
     const { queue, ...snapshotCounts } = getPendingQueueSnapshot();

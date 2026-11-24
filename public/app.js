@@ -548,7 +548,7 @@ async function loadSentinelQueue() {
         const tr = document.createElement('tr');
         const timeStr = item.createdAt ? new Date(item.createdAt).toLocaleTimeString('es-PE', { timeZone: 'America/Lima' }) : '--:--';
         const statusBadgeClass = item.isSentinel ? 'badge-warning' : 'badge-neutral';
-        const statusText = item.eligible && item.authPending ? 'Autenticación institucional pendiente' : item.statusText || (item.isSentinel ? 'En Cola Centinela (Liberados)' : 'Reserva Anticipada');
+        const statusText = item.eligible && item.sessionNeedsLogin ? 'El alumno debe volver a ingresar' : item.eligible && item.authPending ? 'Autenticación institucional pendiente' : item.statusText || (item.isSentinel ? 'En Cola Centinela (Liberados)' : 'Reserva Anticipada');
 
         tr.innerHTML = `
           <td><strong>${item.studentName}</strong><div style="font-size: 0.74rem; color: var(--slate-500); font-family: var(--font-mono);">${item.studentUsername}</div></td>
@@ -1127,6 +1127,11 @@ function setupSSE() {
         term.scrollTop = term.scrollHeight;
       }
     } catch {}
+  });
+
+  src.addEventListener('institutional-session-required', () => {
+    if (currentAuth?.role === 'superadmin') loadSentinelQueue();
+    else loadEnrollment();
   });
 
   src.addEventListener('sniper-status', () => {

@@ -11,6 +11,9 @@ function createBurstHarness() {
     username: id,
     name: id,
     active: true,
+    autoSniper: true,
+    legalConsent: { version: '2026-11-20' },
+    password: 'test',
     role: 'user'
   }));
   const advances = students.map((u) => ({
@@ -33,7 +36,7 @@ function createBurstHarness() {
               name.startsWith('./') ? path.resolve(__dirname, '..', name) : name
             ),
     __dirname: path.resolve(__dirname, '..'),
-    process,
+    process: { ...process, once() {} },
     console,
     setInterval: (callback) => {
       intervals.push(callback);
@@ -200,7 +203,7 @@ test('warmup and last-minute refresh use current enrollment and stop with the en
   assert.equal(vm.runInContext('preparationCalls.length', context), 2);
   vm.runInContext(
     `
-    db.getAllUsers(false).push({id:'late',username:'late',role:'user',active:true});
+    db.getAllUsers(false).push({id:'late',username:'late',role:'user',active:true,autoSniper:true});
     db.getAdvanceReservations().push({alumnoCodigo:'late',tipoComida:'CENA',status:'ACTIVA'});
   `,
     context
@@ -276,10 +279,11 @@ test('student event refreshes are limited to the owner while administrator visib
     broadcastSSE('reservation-status-changed',{student:'one',ticket:{id:'private-ticket'}});
     broadcastSSE('sentinel-queue-updated',{queue:[]});
     broadcastSSE('reservation-batch-finished',[{user:'two',results:[]}]);
+    broadcastSSE('institutional-session-required',{student:'one'});
   `, context);
-  assert.equal(vm.runInContext('delivered.one.length', context), 1);
+  assert.equal(vm.runInContext('delivered.one.length', context), 2);
   assert.equal(vm.runInContext('delivered.two.length', context), 1);
-  assert.equal(vm.runInContext('delivered.admin.length', context), 3);
+  assert.equal(vm.runInContext('delivered.admin.length', context), 4);
   assert.equal(vm.runInContext("delivered.one[0].includes('private-ticket')", context), false);
 });
 
@@ -351,4 +355,58 @@ test('queue summary includes pending authentication and labels paused automation
   assert.equal(summary.totalPendingCount, 3);
   assert.equal(summary.pendingStudentCount, 2);
   assert.equal(summary.sentinelStudentCount, 2);
+});
+
+test('lost institutional credentials require login once, send no authentication request, and recover with a fresh token', async () => {
+  const { context } = createBurstHarness();
+  vm.runInContext(`
+    const messages = [];
+    const notices = [];
+    emitLog = message => messages.push(message);
+    broadcastSSE = (event, payload) => notices.push({event,payload});
+    const lostStudent = { id:'one',username:'one',legalConsent:{version:TERMS_VERSION} };
+    db.findUserById = () => lostStudent;
+    authenticateUserWithUnab = async () => { throw Error('Must not call login without credentials'); };
+  `, context);
+  assert.equal(await vm.runInContext('tokenResolver(lostStudent)', context), null);
+  assert.equal(await vm.runInContext('tokenResolver(lostStudent)', context), null);
+  assert.equal(vm.runInContext('messages.length', context), 1);
+  assert.equal(vm.runInContext('messages[0].includes("error de comunicación")', context), false);
+  assert.equal(vm.runInContext('notices[0].event', context), 'institutional-session-required');
+  assert.equal(vm.runInContext('authIssues.get("one").requiresLogin', context), true);
+  assert.equal(vm.runInContext('db.getAdvanceReservations().length', context), 2);
+  vm.runInContext(`lostStudent.unabToken = 'e30.' + Buffer.from(JSON.stringify({exp: Math.floor(Date.now()/1000)+3600})).toString('base64url')+'.signature';`, context);
+  assert.ok(await vm.runInContext('tokenResolver(lostStudent)', context));
+  assert.equal(vm.runInContext('authIssues.has("one") || authWarnings.has("one")', context), false);
+});
+
+test('paused automation is excluded consistently from burst and sentinel without deleting its request', async () => {
+  const { context, intervals } = createBurstHarness();
+  vm.runInContext(`
+    db.getAllUsers(false)[1].autoSniper = false;
+    db.getAllReservations = () => [];
+    getValidUnabToken = async user => { probeUsers.push(user.id); return null; };
+  `, context);
+  await vm.runInContext('executeMultiUserBurst()', context);
+  await intervals.at(-1)();
+  await intervals.at(-1)();
+  assert.deepEqual(Array.from(vm.runInContext('probeUsers', context)), ['one', 'one']);
+  assert.equal(vm.runInContext("getStudentsInSentinelQueue('2026-11-19', 'CENA').length", context), 1);
+  assert.equal(vm.runInContext('db.getAdvanceReservations().length', context), 2);
+});
+
+test('failed session preparation does not report unpublished services without actually checking programming', async () => {
+  const { context, intervals } = createBurstHarness();
+  vm.runInContext(`
+    const statusMessages = [];
+    emitLog = message => statusMessages.push(message);
+    getValidUnabToken = async () => null;
+    fetchComedorApi = async () => { throw Error('Must not query programming without a session'); };
+  `, context);
+  await vm.runInContext('executeMultiUserBurst()', context);
+  const poll = intervals.at(-1);
+  for (let index=0; index<61; index++) await poll();
+  assert.ok(vm.runInContext('statusMessages.some(message => message.includes("ninguna sesión institucional estuvo lista"))', context));
+  assert.equal(vm.runInContext('statusMessages.some(message => message.includes("sin detectar publicación"))', context), false);
+  assert.equal(vm.runInContext('sentinelStarted', context), true);
 });
