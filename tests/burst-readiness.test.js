@@ -24,7 +24,8 @@ function createBurstHarness() {
   }));
   const db = {
     getAdvanceReservations: () => advances,
-    getAllUsers: () => students
+    getAllUsers: () => students,
+    findUserById: id => students.find(user => user.id === id)
   };
   const context = vm.createContext({
     require: (name) =>
@@ -191,6 +192,10 @@ test('warmup and last-minute refresh use current enrollment and stop with the en
     `
     isJwtExpired = () => false;
     const preparationCalls = [];
+    const ticketPreflightCalls = [];
+    db.getAdvanceReservations().forEach(item => { item.fecha = targetDate; });
+    MEAL_CONFIGS.CENA.horaInicio = targetTime;
+    reserveOnce.prepare = async (...args) => { ticketPreflightCalls.push(args); return true; };
     getValidUnabToken = async (user, force) => { preparationCalls.push({id:user.id, force}); return 'token'; };
     startGlobalSniper({targetMeal:'CENA', targetDate, targetTime});
   `,
@@ -202,15 +207,17 @@ test('warmup and last-minute refresh use current enrollment and stop with the en
   assert.equal(timers[2].delay - timers[1].delay, 59750);
   await timers[0].callback();
   assert.equal(vm.runInContext('preparationCalls.length', context), 2);
+  assert.equal(vm.runInContext('ticketPreflightCalls.length', context), 0);
   vm.runInContext(
     `
     db.getAllUsers(false).push({id:'late',username:'late',role:'user',active:true,autoSniper:true});
-    db.getAdvanceReservations().push({alumnoCodigo:'late',tipoComida:'CENA',status:'ACTIVA'});
+    db.getAdvanceReservations().push({alumnoCodigo:'late',fecha:targetDate,tipoComida:'CENA',status:'ACTIVA'});
   `,
     context
   );
   await timers[1].callback();
   assert.equal(vm.runInContext('preparationCalls.length', context), 5);
+  assert.equal(vm.runInContext('ticketPreflightCalls.length', context), 3);
   assert.equal(vm.runInContext('preparationCalls[4].id', context), 'late');
   assert.equal(vm.runInContext('preparationCalls[4].force', context), false);
   vm.runInContext('stopGlobalSniper(true)', context);
@@ -518,4 +525,51 @@ test('a generic institution 401 renews automatically after a pause without askin
   assert.ok(await vm.runInContext('tokenResolver(owner)',context));
   assert.equal(vm.runInContext('institutionalSessionState(owner)',context),'READY');
   assert.equal(vm.runInContext('authIssues.has(owner.id)',context),false);
+});
+
+test('the entire ready opening batch is queued before earlier confirmations finish',async()=>{
+  const {context,intervals}=createBurstHarness();
+  vm.runInContext(`
+    for(let index=2;index<13;index++) {
+      const id='student-'+index;
+      db.getAllUsers(false).push({id,username:id,role:'user',active:true,autoSniper:true});
+      db.getAdvanceReservations().push({alumnoCodigo:id,fecha:'2026-11-19',tipoComida:'CENA',status:'ACTIVA'});
+    }
+    menu=[{id:'dinner',tipoComida:'CENA'}];
+    const dispatched=[];
+    let releaseBatch;
+    const confirmation=new Promise(resolve=>{releaseBatch=resolve;});
+    fetchUnabResponse=async(url,options)=>{
+      if(options.method==='POST') { dispatched.push(url); await confirmation; return {ok:false,status:409,data:{message:'simulated pending'}}; }
+      return {ok:true,status:200,data:{data:[]}};
+    };
+  `,context);
+  await vm.runInContext('executeMultiUserBurst()',context);
+  const running=intervals.at(-1)();
+  await new Promise(resolve=>setTimeout(resolve,0));
+  assert.equal(vm.runInContext('dispatched.length',context),13);
+  vm.runInContext('releaseBatch()',context);
+  await running;
+});
+
+test('an administrator pausing automation while the opening batch waits prevents that student’s POST',async()=>{
+  const {context,intervals}=createBurstHarness();
+  vm.runInContext(`
+    menu=[{id:'dinner',tipoComida:'CENA'}];
+    const sent=[];
+    let releaseVerification;
+    const verification=new Promise(resolve=>{releaseVerification=resolve;});
+    getValidUnabToken=async user=>user.id;
+    fetchUnabResponse=async(url,options)=>{
+      if(options.method==='POST') {sent.push(options.headers.Authorization);return {ok:false,status:409,data:{message:'pending'}};}
+      await verification;
+      return {ok:true,status:200,data:{data:[]}};
+    };
+  `,context);
+  await vm.runInContext('executeMultiUserBurst()',context);
+  const running=intervals.at(-1)();
+  await new Promise(resolve=>setTimeout(resolve,0));
+  vm.runInContext('db.getAllUsers(false)[0].autoSniper=false;releaseVerification();',context);
+  await running;
+  assert.deepEqual(Array.from(vm.runInContext('sent',context)),['Bearer two']);
 });

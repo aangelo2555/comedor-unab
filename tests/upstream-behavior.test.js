@@ -135,3 +135,21 @@ test('reservation POST receives one attempt and a canceled queued operation send
   assert.equal(result.status, 409);
   assert.equal(calls, 1);
 });
+
+test('a stale preflight sends no POST and request-start metrics are not passed to native fetch',async()=>{
+  let calls=0;
+  const context=createContext(async(url,options)=>{
+    calls++;
+    assert.equal(options.validatePreflight,undefined);
+    assert.equal(options.onRequestStart,undefined);
+    return Response.json({success:true,data:{id:'ticket'}});
+  });
+  vm.runInContext('let started=0;',context);
+  const rejected=await vm.runInContext("fetchUnabResponse('https://comedor-api.unab.edu.pe/v1/reservas',{method:'POST',validatePreflight:()=>false},false)",context);
+  assert.equal(rejected.data.code,'PREFLIGHT_STALE');
+  assert.equal(calls,0);
+  const result=await vm.runInContext("fetchUnabResponse('https://comedor-api.unab.edu.pe/v1/reservas',{method:'POST',validatePreflight:()=>true,onRequestStart:()=>started++},false)",context);
+  assert.equal(result.ok,true);
+  assert.equal(calls,1);
+  assert.equal(vm.runInContext('started',context),1);
+});

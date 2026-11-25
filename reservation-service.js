@@ -1,6 +1,22 @@
 // Serialize each student's date/meal across automatic and manual entry points.
 function createReservationService(callApi) {
   const pending = new Map();
+  const prepared = new Map();
+  const generations = new Map();
+  let preparationEpoch = 0;
+  const proofLifetimeMs = 90000;
+  const openingWindowMs = 2500;
+  const keyFor = (userId, date, meal) => JSON.stringify([userId, date, meal.toUpperCase()]);
+  const proofValid = proof => proof && proof.epoch === preparationEpoch && Date.now() >= proof.openingTs && Date.now() <= proof.openingTs + openingWindowMs && Date.now() - proof.checkedAt <= proofLifetimeMs;
+  function invalidate(userId, date, meal) {
+    const key = keyFor(userId, date, meal);
+    prepared.delete(key);
+    generations.set(key, (generations.get(key) || 0) + 1);
+  }
+  function prune() {
+    const now = Date.now();
+    for (const [key, proof] of prepared) if (now > proof.openingTs + openingWindowMs || now - proof.checkedAt > proofLifetimeMs) prepared.delete(key);
+  }
 
   async function reserve(
     token,
@@ -8,10 +24,13 @@ function createReservationService(callApi) {
     date,
     meal,
     canProceed = () => true,
-    requestOptions
+    requestOptions,
+    proof
   ) {
+    const { preparedOpeningTs, onWriteStart, ...apiOptions } = requestOptions || {};
+    proof = proofValid(proof) ? proof : null;
     const query = `/reservas/me?fecha=${encodeURIComponent(date)}`;
-    const existing = await callApi(query, token, requestOptions);
+    const existing = proof ? { ok: true, data: { data: [] } } : await callApi(query, token, requestOptions ? apiOptions : undefined);
     if (!existing.ok || !Array.isArray(existing.data?.data)) {
       return {
         ok: false,
@@ -38,15 +57,19 @@ function createReservationService(callApi) {
         data: { message: 'La solicitud dejó de estar activa.' }
       };
     const result = await callApi('/reservas', token, {
-      ...requestOptions,
+      ...apiOptions,
+      ...(proof ? { validatePreflight: () => proofValid(proof) } : {}),
+      ...(onWriteStart ? { onRequestStart: onWriteStart } : {}),
+      priority: Math.max(apiOptions.priority || 0, preparedOpeningTs ? 2 : 0),
       method: 'POST',
       body: JSON.stringify({ programacionId: programming }),
       canProceed
     });
+    if (proof && result.data?.code === 'PREFLIGHT_STALE' && canProceed()) return reserve(token, programming, date, meal, canProceed, requestOptions);
     if (result.ok && result.data?.success && result.data.data?.id)
       return result;
     // A lost response can still mean the upstream committed the reservation.
-    const check = await callApi(query, token, requestOptions);
+    const check = await callApi(query, token, requestOptions ? apiOptions : undefined);
     const found =
       check.ok &&
       Array.isArray(check.data?.data) &&
@@ -73,7 +96,7 @@ function createReservationService(callApi) {
     };
   }
 
-  return async function reserveOnce(
+  async function reserveOnce(
     userId,
     token,
     programming,
@@ -83,15 +106,20 @@ function createReservationService(callApi) {
     requestOptions
   ) {
     meal = meal.toUpperCase();
-    const key = JSON.stringify([userId, date, meal]);
+    const key = keyFor(userId, date, meal);
     if (pending.has(key)) return pending.get(key);
+    prune();
+    const candidate = prepared.get(key);
+    const proof = requestOptions?.preparedOpeningTs === candidate?.openingTs && candidate?.token === token && proofValid(candidate) ? candidate : null;
+    invalidate(userId, date, meal);
     const operation = reserve(
       token,
       programming,
       date,
       meal,
       canProceed,
-      requestOptions
+      requestOptions,
+      proof
     );
     pending.set(key, operation);
     try {
@@ -100,6 +128,24 @@ function createReservationService(callApi) {
       pending.delete(key);
     }
   };
+  reserveOnce.invalidate = invalidate;
+  reserveOnce.clearPrepared = () => { preparationEpoch++; prepared.clear(); generations.clear(); };
+  reserveOnce.prepare = async (userId, token, date, meal, openingTs, options = {}) => {
+    prune();
+    if (!Number.isFinite(openingTs) || Date.now() >= openingTs || openingTs - Date.now() > 65000 || (options.canProceed && !options.canProceed())) return false;
+    const key = keyFor(userId, date, meal);
+    if (pending.has(key)) return false;
+    const generation = generations.get(key) || 0;
+    const epoch = preparationEpoch;
+    const result = await callApi(`/reservas/me?fecha=${encodeURIComponent(date)}`, token, options);
+    if (!result.ok || !Array.isArray(result.data?.data) || pending.has(key) || generation !== (generations.get(key) || 0) || epoch !== preparationEpoch || (options.canProceed && !options.canProceed())) return false;
+    if (result.data.data.some(item => (item.tipoComida || '').toUpperCase() === meal.toUpperCase() && (!item.fecha || item.fecha === date) && ['ACTIVA', 'CONSUMIDA'].includes(item.estado))) return false;
+    if (Date.now() >= openingTs) return false;
+    prepared.set(key, { token, openingTs, epoch, checkedAt: Date.now() });
+    return true;
+  };
+  return reserveOnce;
+
 }
 
 async function mapWithConcurrency(items, concurrency, operation) {

@@ -12,6 +12,7 @@ async function prepareSessions(
     targetTs,
     isExpired,
     verifyRemote = true,
+    prepareReservations,
     now = Date.now
   }
 ) {
@@ -27,7 +28,9 @@ async function prepareSessions(
       { skipProfile: true },
       minimumValidityMs
     );
-    return Boolean(token && !isExpired(token, minimumValidityMs));
+    const ready = Boolean(token && !isExpired(token, minimumValidityMs));
+    if (ready && canProceed() && prepareReservations) await prepareReservations(user, token);
+    return ready;
   });
   return { total: results.length, ready: results.filter(Boolean).length };
 }

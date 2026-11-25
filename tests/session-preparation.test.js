@@ -83,3 +83,17 @@ test('canceled preparation does not initiate authentication and short-lived toke
   });
   assert.equal(expired.ready, 0);
 });
+
+test('the final session pass prepares tickets only for authenticated ready users',async()=>{
+  const checked=[];
+  const result=await prepareSessions([{id:'ready'},{id:'missing'}],{
+    targetTs:Date.now()+60000,
+    canProceed:()=>true,
+    verifyRemote:false,
+    isExpired:()=>false,
+    getToken:async user=>user.id==='ready'?'valid-token':null,
+    prepareReservations:async(user,token)=>{checked.push({user:user.id,token});}
+  });
+  assert.equal(result.ready,1);
+  assert.deepEqual(checked,[{user:'ready',token:'valid-token'}]);
+});

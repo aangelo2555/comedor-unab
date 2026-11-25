@@ -11,14 +11,14 @@ class RequestGate {
     this.timer = null;
   }
 
-  run(operation, priority = 0) {
+  run(operation, priority = 0, beforeStart) {
     if (this.queue.length >= this.maxQueue) {
       return Promise.reject(
         new Error('La cola de consultas UNAB está llena. Vuelve a intentarlo.')
       );
     }
     return new Promise((resolve, reject) => {
-      this.queue.push({ operation, resolve, reject, priority });
+      this.queue.push({ operation, resolve, reject, priority, beforeStart });
       this.queue.sort((a, b) => b.priority - a.priority);
       this.drain();
     });
@@ -35,6 +35,17 @@ class RequestGate {
       this.queue.length === 0
     )
       return;
+    // Reject expired local preparation without spending an upstream request slot.
+    while (this.queue.length) {
+      const job = this.queue[0];
+      let early;
+      try { early = job.beforeStart?.(); }
+      catch (error) { this.queue.shift(); job.reject(error); continue; }
+      if (early === undefined) break;
+      this.queue.shift();
+      job.resolve(early);
+    }
+    if (!this.queue.length) return;
     const delay = Math.max(this.nextStart, this.pausedUntil) - Date.now();
     if (delay > 0) {
       this.timer = setTimeout(() => {
