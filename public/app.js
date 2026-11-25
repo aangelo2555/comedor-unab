@@ -560,7 +560,7 @@ async function loadSentinelQueue() {
           <td>${timeStr}</td>
           <td><span class="badge ${statusBadgeClass}">${statusText}</span></td>
           <td>
-            <button class="btn btn-danger btn-sm" onclick="adminCancelAdvance('${item.advanceId}')">
+            <button class="btn btn-danger btn-sm" onclick="adminCancelAdvance('${item.advanceId}', this)">
               Cancelar
             </button>
           </td>
@@ -658,22 +658,20 @@ async function loadSniperStatus() {
   }
 }
 
-async function adminCancelAdvance(advId) {
-  if (!confirm('¿Deseas retirar a este alumno de la cola de espera?')) return;
+async function adminCancelAdvance(advId, button) {
+  if (!confirm('¿Cancelar esta solicitud y retirarla de la cola? La cuenta y su plan se conservan.')) return;
+  if (button) button.disabled = true;
   try {
-    const res = await fetch(`/api/student/advance-reservation/${advId}`, {
-      method: 'DELETE',
-      headers: authHeaders()
+    const res = await fetch(`/api/admin/advance-reservations/${encodeURIComponent(advId)}`, {
+      method: 'DELETE', headers: authHeaders()
     });
-    if (res.ok) {
-      showToast('Alumno retirado de la cola.', 'info');
-      loadSentinelQueue();
-      loadAdminUsers();
-      loadSniperStatus();
-    }
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || 'No se pudo cancelar la solicitud.');
+    showToast(data.message || 'Solicitud retirada de la cola.', 'info');
+    await Promise.all([loadSentinelQueue(), loadAdminUsers(), loadSniperStatus()]);
   } catch (err) {
     showToast(err.message, 'error');
-  }
+  } finally { if (button) button.disabled = false; }
 }
 
 document.getElementById('btnRefreshSentinelQueue')?.addEventListener('click', () => {

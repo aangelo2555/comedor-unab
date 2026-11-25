@@ -1425,6 +1425,27 @@ const server = http.createServer(async (req, res) => {
       return sendJson(403, { error: 'Acceso denegado. Se requieren permisos de SuperAdmin.' });
     }
 
+    // Administrative queue cancellation is local and never depends on the student's institutional session.
+    if (pathname.startsWith('/api/admin/advance-reservations/') && req.method === 'DELETE') {
+      const advanceId = pathname.slice('/api/admin/advance-reservations/'.length);
+      const advance = db.getAdvanceReservations().find(item => item.id === advanceId);
+      if (!advance) return sendJson(404, { success: false, error: 'Solicitud no encontrada.' });
+      const view = requestView(advance, db.getAllReservations());
+      if (['CONFIRMADA', 'CONSUMIDA'].includes(view.status)) return sendJson(409, { success: false, error: 'Esta solicitud ya tiene un ticket confirmado o consumido. Retirarla de la cola no cancela el ticket institucional.' });
+      if (advance.status !== 'ANULADA') {
+        const student = db.findUserByUsername(advance.alumnoCodigo);
+        if (student && reserveOnce.isSubmitting(student.id, advance.fecha, advance.tipoComida)) return sendJson(409, { success: false, error: 'La petición de reserva ya fue enviada a la institución. Espera su resultado antes de cancelar; retirarla de la cola no anula una reserva en proceso.' });
+        if (student) reserveOnce.invalidate(student.id, advance.fecha, advance.tipoComida);
+        db.cancelAdvanceReservation(advance.id);
+        emitLog(`[ADMIN] ${session.username} canceló la solicitud ${advance.tipoComida} de ${advance.alumnoCodigo} para ${advance.fecha}.`, 'info');
+        checkAndManageSentinelQueue();
+        tickRailwayMasterScheduler();
+        broadcastSSE('advance-reservation-cancelled', { id: advance.id, student: advance.alumnoCodigo });
+        broadcastSSE('sentinel-queue-updated', { queue: getStudentsInSentinelQueue(globalSniper.targetDate, globalSniper.targetMeal) });
+      }
+      return sendJson(200, { success: true, id: advance.id, status: 'ANULADA', message: 'Solicitud cancelada y retirada de la cola. La cuenta y su plan se conservan.' });
+    }
+
     if (pathname.startsWith('/api/admin/premium/') && req.method === 'PUT') {
       const userId = pathname.slice('/api/admin/premium/'.length);
       const user = db.findUserById(userId);
@@ -1784,6 +1805,7 @@ const server = http.createServer(async (req, res) => {
     const ownRequest = db.getAdvanceReservations({ alumnoCodigo: user.username }).find(item => item.id === advId);
     if (!ownRequest) return sendJson(404, { error: 'Solicitud no encontrada.' });
     if (['CONFIRMADA', 'CONSUMIDA'].includes(requestView(ownRequest, db.getAllReservations()).status)) return sendJson(409, { error: 'La solicitud ya tiene un ticket confirmado. Cancela el ticket desde tus pases.' });
+    if (reserveOnce.isSubmitting(user.id, ownRequest.fecha, ownRequest.tipoComida)) return sendJson(409, { error: 'La petición de reserva ya fue enviada. Espera su resultado para cancelar el ticket si llega a confirmarse.' });
     reserveOnce.invalidate(user.id, ownRequest.fecha, ownRequest.tipoComida);
     db.cancelAdvanceReservation(advId);
 

@@ -1,6 +1,7 @@
 // Serialize each student's date/meal across automatic and manual entry points.
 function createReservationService(callApi) {
   const pending = new Map();
+  const submitting = new Set();
   const prepared = new Map();
   const generations = new Map();
   let preparationEpoch = 0;
@@ -25,7 +26,8 @@ function createReservationService(callApi) {
     meal,
     canProceed = () => true,
     requestOptions,
-    proof
+    proof,
+    onSubmit
   ) {
     const { preparedOpeningTs, onWriteStart, openingBurst, ...apiOptions } = requestOptions || {};
     proof = proofValid(proof) ? proof : null;
@@ -60,13 +62,13 @@ function createReservationService(callApi) {
       ...apiOptions,
       ...(openingBurst ? { openingBurst } : {}),
       ...(proof ? { validatePreflight: () => proofValid(proof) } : {}),
-      ...(onWriteStart ? { onRequestStart: onWriteStart } : {}),
+      ...((onSubmit || onWriteStart) ? { onRequestStart: info => { onSubmit?.(); onWriteStart?.(info); } } : {}),
       priority: Math.max(apiOptions.priority || 0, preparedOpeningTs ? 2 : 0),
       method: 'POST',
       body: JSON.stringify({ programacionId: programming }),
       canProceed
     });
-    if (proof && result.data?.code === 'PREFLIGHT_STALE' && canProceed()) return reserve(token, programming, date, meal, canProceed, requestOptions);
+    if (proof && result.data?.code === 'PREFLIGHT_STALE' && canProceed()) return reserve(token, programming, date, meal, canProceed, requestOptions, undefined, onSubmit);
     if (result.ok && result.data?.success && result.data.data?.id)
       return result;
     // A lost response can still mean the upstream committed the reservation.
@@ -120,15 +122,18 @@ function createReservationService(callApi) {
       meal,
       canProceed,
       requestOptions,
-      proof
+      proof,
+      () => submitting.add(key)
     );
     pending.set(key, operation);
     try {
       return await operation;
     } finally {
       pending.delete(key);
+      submitting.delete(key);
     }
   };
+  reserveOnce.isSubmitting = (userId, date, meal) => submitting.has(keyFor(userId, date, meal));
   reserveOnce.invalidate = invalidate;
   reserveOnce.clearPrepared = () => { preparationEpoch++; prepared.clear(); generations.clear(); };
   reserveOnce.prepare = async (userId, token, date, meal, openingTs, options = {}) => {

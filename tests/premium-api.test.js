@@ -109,6 +109,50 @@ if (process.env.FREE_HELP_CHILD) {
     } finally {await app.close();}
   });
 
+  test('admins cancel missing-session queue entries locally without changing Premium or other requests',async()=>{
+    const app=await launch(true,false,true);
+    try {
+      const credentials={username:'test-student',password:'institution-secret',termsVersion:'2026-11-20',processingConsent:true};
+      const student=await (await app.request('/api/auth/login','POST',credentials)).json();
+      const admin=await (await app.request('/api/auth/login','POST',{username:'admin@example.test',password:'admin-test-only'})).json();
+      await app.request('/api/admin/premium/student','PUT',{enabled:true,endDate:'2099-12-31',meals:['CENA']},admin.token);
+      const data=await (await app.request('/api/student/premium','GET',undefined,student.token)).json();
+      const dinner=data.appointments.find(item=>item.meal==='CENA');
+      const lunch=await (await app.request('/api/student/advance-reservation','POST',{meal:'ALMUERZO',date:'2026-11-25'},student.token)).json();
+      // Reproduce the screenshot: the account has lost both institutional credentials.
+      assert.equal((await app.request('/api/admin/users/student','PUT',{password:'',unabToken:''},admin.token)).status,200);
+      const endpoint='/api/admin/advance-reservations/'+dinner.id;
+      assert.equal((await app.request(endpoint,'DELETE')).status,403);
+      assert.equal((await app.request(endpoint,'DELETE',undefined,student.token)).status,403);
+      const canceled=await app.request(endpoint,'DELETE',undefined,admin.token);
+      assert.equal(canceled.status,200);
+      assert.equal((await canceled.json()).status,'ANULADA');
+      assert.equal((await app.request(endpoint,'DELETE',undefined,admin.token)).status,200,'Administrative cancellation is idempotent');
+      assert.equal((await app.request('/api/admin/advance-reservations/unknown','DELETE',undefined,admin.token)).status,404);
+      const queue=await (await app.request('/api/sniper/queue','GET',undefined,admin.token)).json();
+      assert.ok(!queue.queue.some(item=>item.advanceId===dinner.id));
+      assert.ok(queue.queue.some(item=>item.advanceId===lunch.data.id));
+      const state=JSON.parse(fs.readFileSync(app.database,'utf8'));
+      assert.equal(state.users.find(item=>item.id==='student').premium.enabled,true);
+      assert.equal(state.advanceReservations.find(item=>item.id===dinner.id).status,'ANULADA');
+      assert.equal(state.advanceReservations.find(item=>item.id===lunch.data.id).status,'ACTIVA');
+    } finally {await app.close();}
+  });
+
+  test('administrative queue cancellation never claims to cancel an official confirmed ticket',async()=>{
+    const app=await launch(true,false,'confirmed');
+    try {
+      const admin=await (await app.request('/api/auth/login','POST',{username:'admin@example.test',password:'admin-test-only'})).json();
+      await app.request('/api/admin/premium/student','PUT',{enabled:true,endDate:'2099-12-31',meals:['CENA']},admin.token);
+      const all=await (await app.request('/api/admin/reservas','GET',undefined,admin.token)).json();
+      const dinner=all.advance.find(item=>item.tipoComida==='CENA');
+      assert.equal((await app.request('/api/admin/advance-reservations/'+dinner.id,'DELETE',undefined,admin.token)).status,409);
+      const state=JSON.parse(fs.readFileSync(app.database,'utf8'));
+      assert.equal(state.reservas.find(item=>item.id==='old-dinner').estado,'ACTIVA');
+      assert.equal(state.advanceReservations.find(item=>item.id===dinner.id).status,'ACTIVA');
+    } finally {await app.close();}
+  });
+
   test('a successful HTTP status without an institutional session returns a retryable error to new students', async () => {
     const app = await launch(true, true);
     try {
