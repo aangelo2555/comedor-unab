@@ -36,3 +36,12 @@ test('rejected and canceled logins do not create a session or retry credentials'
   const canceled = await loginInstitution(async () => { throw Error('Must not send'); }, 'student', 'secret', { canProceed: () => false });
   assert.equal(canceled.status, 409);
 });
+
+test('a generic 401 remains recoverable while explicit incorrect credentials are distinguished even inside HTTP 201', async()=>{
+  const transient = await loginInstitution(async()=>({ok:false,status:401,data:{message:'Temporalmente no disponible'}}),'student','secret');
+  assert.equal(transient.code,'AUTHENTICATION_UNCONFIRMED');
+  for (const data of [{message:'Contraseña incorrecta'},{code:'INVALID_CREDENTIALS'},{data:{message:'Credenciales no válidas'}}]) {
+    const invalid = await loginInstitution(async()=>({ok:true,status:201,data}),'student','secret');
+    assert.equal(invalid.code,'CREDENTIALS_REJECTED');
+  }
+});

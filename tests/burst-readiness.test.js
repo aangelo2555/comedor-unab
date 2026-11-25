@@ -472,7 +472,7 @@ test('definitively rejected credentials pause retries until credentials change',
     const owner = db.getAllUsers(false)[0];
     db.findUserById = () => owner;
     let renewals = 0;
-    authenticateUserWithUnab = async () => { renewals++; return {success:false,status:401}; };
+    authenticateUserWithUnab = async () => { renewals++; return {success:false,status:401,code:'CREDENTIALS_REJECTED'}; };
   `,context);
   await vm.runInContext('tokenResolver(owner)',context);
   await vm.runInContext('tokenResolver(owner)',context);
@@ -494,4 +494,28 @@ test('a late rejection of an old session does not discard a newer successful log
     authenticateUserWithUnab = async () => { throw Error('New login must be retained'); };
   `,context);
   assert.equal(await vm.runInContext('tokenResolver(owner,true)',context),vm.runInContext("makeToken('new')",context));
+});
+
+test('a generic institution 401 renews automatically after a pause without asking the student to log in', async()=>{
+  const {context}=createBurstHarness();
+  vm.runInContext(`
+    const owner = db.getAllUsers(false)[0];
+    db.findUserById = () => owner;
+    let loginCalls = 0;
+    authenticateUserWithUnab = async () => {
+      loginCalls++;
+      if (loginCalls === 1) return {success:false,status:401,code:'AUTHENTICATION_UNCONFIRMED'};
+      owner.unabToken = 'e30.'+Buffer.from(JSON.stringify({exp:Math.floor(Date.now()/1000)+3600})).toString('base64url')+'.fresh';
+      return {success:true,token:owner.unabToken};
+    };
+  `,context);
+  assert.equal(await vm.runInContext('tokenResolver(owner)',context),null);
+  assert.equal(vm.runInContext('institutionalSessionState(owner)',context),'RECOVERING');
+  assert.equal(vm.runInContext('authIssues.get(owner.id).requiresLogin',context),false);
+  await vm.runInContext('tokenResolver(owner)',context);
+  assert.equal(vm.runInContext('loginCalls',context),1);
+  vm.runInContext('authRetryState.get(owner.id).until = 0',context);
+  assert.ok(await vm.runInContext('tokenResolver(owner)',context));
+  assert.equal(vm.runInContext('institutionalSessionState(owner)',context),'READY');
+  assert.equal(vm.runInContext('authIssues.has(owner.id)',context),false);
 });

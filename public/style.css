@@ -1412,3 +1412,14 @@ body:not(.admin-session) .brand-logo { width: 30px; height: 34px; }
 .premium-modal .premium-footnote { font-size: 11px; line-height: 1.4; color: #52697d; margin: 10px 0; }
 .premium-modal #premiumAccessMessage { font-size: 13px; margin-bottom: 12px; }
 .premium-modal .premium-dismiss { min-height: 38px; margin-top: 0; padding: 8px; }
+
+.premium-booking-section { margin: 24px 0 36px; }
+.premium-booking-section .premium-help { margin: 12px 0 20px; }
+.premium-request .btn { margin-top: 14px; }
+.reservation-recovery-notice { grid-column: 1 / -1; padding: 14px 16px; border-radius: 14px; background: #fff5db; color: #664a0b; font-size: 14px; line-height: 1.5; }
+.premium-hero { gap: 24px; padding-bottom: 20px; }
+.premium-hero h2 { font-size: clamp(30px, 4vw, 48px); margin: 12px 0; }
+.premium-hero > div > p { font-size: 14px; line-height: 1.5; margin-bottom: 16px; }
+.premium-plan-card { padding: 20px; border-radius: 22px; }
+.premium-plan-card h3 { font-size: 24px; margin: 10px 0; }
+.premium-booking-section > .premium-help { color: #d7e7f5; font-size: 14px; line-height: 1.5; }

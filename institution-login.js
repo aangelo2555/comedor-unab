@@ -12,6 +12,17 @@ function extractToken(data) {
   return null;
 }
 
+function credentialsRejected(data) {
+  if (!data || typeof data !== 'object') return false;
+  const values = [data, data.data, data.error].filter(value => value && typeof value === 'object');
+  return values.some(value => ['code', 'errorCode', 'message', 'error', 'detail'].some(field => {
+    if (typeof value[field] !== 'string') return false;
+    const message = value[field].normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+    return /invalid_credentials|invalid_password|bad_credentials|wrong_password|user_not_found/.test(message) ||
+      /credenciales.{0,35}(incorrect|invalid|no.{0,8}valid)|(?:password|contrasena).{0,35}(incorrect|invalid)|(?:incorrect|invalid).{0,25}(?:password|credential)|usuario.{0,25}no (?:existe|encontrado)/.test(message);
+  }));
+}
+
 async function loginInstitution(request, username, password, options = {}) {
   for (let attempt = 0; attempt < 2; attempt++) {
     if (options.canProceed && !options.canProceed()) return { success: false, status: 409, error: 'Preparación cancelada.' };
@@ -26,7 +37,8 @@ async function loginInstitution(request, username, password, options = {}) {
       },
       body: JSON.stringify({ UserName: username, userspassunab: password })
     });
-    if (!response.ok) return { success: false, status: response.status, error: 'La institución no confirmó el acceso. Verifica tus credenciales o inténtalo de nuevo.' };
+    if (credentialsRejected(response.data)) return { success: false, status: 401, code: 'CREDENTIALS_REJECTED', error: 'La institución indicó que las credenciales son incorrectas. Actualiza tu acceso institucional.' };
+    if (!response.ok) return { success: false, status: response.status, code: 'AUTHENTICATION_UNCONFIRMED', error: 'La institución no pudo confirmar el acceso en este momento.' };
     const token = extractToken(response.data);
     if (token) return { success: true, token };
     if (attempt === 1) return {
@@ -36,4 +48,4 @@ async function loginInstitution(request, username, password, options = {}) {
   }
 }
 
-module.exports = { extractToken, loginInstitution };
+module.exports = { extractToken, loginInstitution, credentialsRejected };

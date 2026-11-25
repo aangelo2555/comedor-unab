@@ -92,6 +92,7 @@
     <div id="panel-superadmin" style="display: none;">
       <section class="portal-hero">
         <p class="hero-eyebrow">Administración · Mi Mesa</p>
+        <p id="adminSessionRecoveryNotice" class="reservation-recovery-notice" role="status" hidden></p>
         <h2>Todo listo para<br>el próximo servicio.</h2>
         <p>Gestiona estudiantes, supervisa la cola y consulta las reservas desde un solo lugar.</p>
       </section>
@@ -391,9 +392,9 @@
         </div>
 
         <!-- 3 MEAL CARDS (DESAYUNO, ALMUERZO, CENA) -->
-        <div class="grid-3 unab-cards-container" id="studentMealCardsContainer">
+        <div id="studentMealCardsHome"><div class="grid-3 unab-cards-container" id="studentMealCardsContainer">
           <!-- Populated dynamically via JS -->
-        </div>
+        </div></div>
 
       </div>
 
@@ -465,15 +466,20 @@
   <section id="panel-premium" class="premium-portal" style="display:none;">
     <div class="premium-hero">
       <div><span class="premium-label">Mi Mesa · Premium</span>
-        <h2>Tu ciclo,<br>bien organizado.</h2>
+        <h2>Tus comidas,<br>en automático.</h2>
         <p id="premiumCycleSummary"></p>
-        <button class="btn btn-primary" id="btnPremiumSettings">Información de Premium</button>
+        <a class="btn btn-secondary" href="https://wa.me/51923887478" target="_blank" rel="noopener noreferrer">Contactar al administrador</a>
       </div>
-      <aside class="premium-plan-card"><span>Tu selección recurrente</span><h3 id="premiumSelectedMeals">Elige tus comidas</h3>
+      <aside class="premium-plan-card"><span>Servicios automáticos</span><h3 id="premiumSelectedMeals">Elige tus comidas</h3>
         <p>El administrador configura tus servicios y la fecha de fin de ciclo.</p>
         <p>La cancelación preventiva se intenta cuando está habilitada en tu plan.</p>
       </aside>
     </div>
+    <section class="premium-booking-section" aria-labelledby="premiumBookingTitle">
+      <div class="premium-section-heading"><h3 id="premiumBookingTitle">Reserva para hoy</h3><button class="btn btn-secondary" id="btnPremiumMealsRefresh" type="button">Actualizar servicios</button></div>
+      <p class="premium-help">Puedes reservar cualquier servicio o volver a solicitarlo después de cancelar. Esto no cambia tu plan automático.</p>
+      <div id="premiumMealCardsHolder"></div>
+    </section>
     <h3 class="premium-requests-title">Mis solicitudes</h3>
     <div id="premiumRequestsHolder" class="grid-3 premium-requests"></div>
     <div class="premium-section-heading"><h3>Mis pases de hoy</h3><button class="btn btn-secondary" id="btnPremiumRefresh">Actualizar</button></div>

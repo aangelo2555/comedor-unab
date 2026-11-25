@@ -27,7 +27,7 @@ function createReservationService(callApi) {
         item.id &&
         (item.tipoComida || '').toUpperCase() === meal &&
         (!item.fecha || item.fecha === date) &&
-        item.estado === 'ACTIVA'
+        ['ACTIVA', 'CONSUMIDA'].includes(item.estado)
     );
     if (ticket)
       return { ok: true, status: 200, data: { success: true, data: ticket } };
@@ -55,7 +55,7 @@ function createReservationService(callApi) {
           item.id &&
           (item.tipoComida || '').toUpperCase() === meal &&
           (!item.fecha || item.fecha === date) &&
-          item.estado === 'ACTIVA'
+          ['ACTIVA', 'CONSUMIDA'].includes(item.estado)
       );
     if (found)
       return { ok: true, status: 200, data: { success: true, data: found } };

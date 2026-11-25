@@ -11,6 +11,7 @@ const crypto = require('crypto');
 
 const db = require('./db');
 const { loginInstitution } = require('./institution-login');
+const { requestView } = require('./reservation-view');
 const { enrollment, admittedStudents, capacityError } = require('./student-capacity');
 const { WARMUP_LEAD_MS, REFRESH_LEAD_MS, PUBLICATION_POLL_MS, prepareSessions } = require('./session-preparation');
 const { TERMS_VERSION, servicePolicy } = require('./service-policy');
@@ -329,6 +330,13 @@ function clearAuthIssue(id) {
   authIssues.delete(id);
   authRetryState.delete(id);
 }
+function institutionalSessionState(user) {
+  if (user.legalConsent?.version !== TERMS_VERSION) return 'ACTION_REQUIRED';
+  if (user.unabToken && !isJwtExpired(user.unabToken)) return 'READY';
+  if (!user.password || authIssues.get(user.id)?.code === 'CREDENTIALS_REJECTED') return 'ACTION_REQUIRED';
+  return 'RECOVERING';
+}
+
 async function getValidUnabToken(userRecord, forceVerify = false, requestOptions = {}, minimumValidityMs = 120000) {
   if (userRecord.legalConsent?.version !== TERMS_VERSION) { noteAuthIssue(userRecord, 'CONSENT_REQUIRED'); return null; }
   const key = userRecord.id;
@@ -370,16 +378,16 @@ async function resolveUnabToken(userRecord, forceVerify, requestOptions, minimum
   const auth = await authenticateUserWithUnab(userRecord, requestOptions);
   if (auth.success) { clearAuthIssue(userRecord.id); return auth.token; }
   const failures = Math.min((authRetryState.get(userRecord.id)?.failures || 0) + 1, 4);
-  authRetryState.set(userRecord.id, auth.status === 401
+  authRetryState.set(userRecord.id, auth.code === 'CREDENTIALS_REJECTED'
     ? { failures, until: Infinity, credentialFingerprint: crypto.createHash('sha256').update(userRecord.password).digest('hex') }
-    : { failures, until: Date.now() + Math.min(30000, 5000 * 2 ** (failures - 1)) });
-  noteAuthIssue(userRecord, auth.code || (auth.status === 401 ? 'CREDENTIALS_REJECTED' : 'AUTHENTICATION_FAILED'), auth.status);
+    : { failures, until: Date.now() + (auth.status === 401 && failures >= 3 ? 300000 : Math.min(30000, 5000 * 2 ** (failures - 1))) });
+  noteAuthIssue(userRecord, auth.code || 'AUTHENTICATION_FAILED', auth.status);
   return null;
 }
 
 function canReserveService(user, meal, date) {
   if (!isMealInServiceWindow(meal, date)) return false;
-  if (!isPremium(user, date)) return true;
+  if (!isPremium(user, date) || !user.automationConsent?.autoCancel) return true;
   const close = Date.parse(`${date}T${MEAL_CONFIGS[meal].horaFin}-05:00`);
   return Date.now() < close - 40000;
 }
@@ -646,14 +654,14 @@ function getAllPendingAdvanceReservations() {
       (r.alumnoCodigo === adv.alumnoCodigo || (adv.alumnoDni && r.alumnoDni === adv.alumnoDni)) &&
       r.fecha === adv.fecha &&
       r.tipoComida.toUpperCase() === adv.tipoComida.toUpperCase() &&
-      r.estado === 'ACTIVA'
+      ['ACTIVA', 'CONSUMIDA'].includes(r.estado)
     );
     if (!alreadyConfirmed) {
       const inWindow = isMealInServiceWindow(adv.tipoComida, adv.fecha);
       const cfg = MEAL_CONFIGS[adv.tipoComida];
       const membership = enrollment(allUsers, student?.id);
       const eligible = Boolean(student?.active && student.autoSniper && membership.admitted);
-      const sessionNeedsLogin = Boolean(student && (authIssues.get(student.id)?.requiresLogin || student.legalConsent?.version !== TERMS_VERSION || (!student.password && isJwtExpired(student.unabToken))));
+      const sessionNeedsLogin = Boolean(student && institutionalSessionState(student) === 'ACTION_REQUIRED');
       list.push({
         advanceId: adv.id,
         studentUsername: adv.alumnoCodigo,
@@ -669,6 +677,7 @@ function getAllPendingAdvanceReservations() {
         eligible,
         authPending: sessionNeedsLogin || authWarnings.has(student?.id),
         sessionNeedsLogin,
+        sessionState: student ? institutionalSessionState(student) : 'ACTION_REQUIRED',
         isSentinel: eligible && inWindow,
         statusText: !membership.admitted ? 'Fuera del cupo de alumnos' : !student?.active ? 'Cuenta inactiva' : !student.autoSniper ? 'Automatización pausada' : inWindow
           ? 'En Cola Centinela (Buscando Liberados)' 
@@ -807,7 +816,7 @@ function startSentinelWatch(options = {}) {
           (r.alumnoCodigo === item.studentUsername || (item.studentDni && r.alumnoDni === item.studentDni)) &&
           r.fecha === date &&
           r.tipoComida.toUpperCase() === item.meal.toUpperCase() &&
-          r.estado === 'ACTIVA'
+          ['ACTIVA', 'CONSUMIDA'].includes(r.estado)
         );
         if (alreadyDone) {
           db.markAdvanceReservationConfirmed(item.advanceId, { id: 'SYNCED', qrToken: '' });
@@ -839,7 +848,7 @@ function startSentinelWatch(options = {}) {
               fecha: date,
               horaReserva: getLimaTimeString().slice(0, 8),
               qrToken: ticket.qrToken,
-              estado: 'ACTIVA',
+              estado: ticket.estado || 'ACTIVA',
               campus: item.campus
             });
 
@@ -1057,7 +1066,7 @@ async function executeMultiUserBurst() {
                 fecha: runDate,
                 horaReserva: getLimaTimeString().slice(0, 8),
                 qrToken: ticket.qrToken,
-                estado: 'ACTIVA',
+                estado: ticket.estado || 'ACTIVA',
                 campus: student.campus
               });
 
@@ -1559,10 +1568,12 @@ const server = http.createServer(async (req, res) => {
     const appointments = db.getAdvanceReservations({ alumnoCodigo: user.username })
       .filter(item => item.fecha === today)
       .map(item => {
-        const ticket = db.getAllReservations().find(ticket => ticket.alumnoCodigo === user.username &&
-          ticket.fecha === item.fecha && ticket.tipoComida === item.tipoComida);
-        return { id: item.id, meal: item.tipoComida, date: item.fecha, status: ticket?.estado || item.status,
-          authPending: item.status === 'ACTIVA' && authWarnings.has(user.id) };
+        const view = requestView(item, db.getAllReservations());
+        const cfg = MEAL_CONFIGS[item.tipoComida];
+        const beforeClose = cfg && Date.now() < Date.parse(`${today}T${cfg.horaFin}-05:00`) - (user.automationConsent?.autoCancel ? 40000 : 0);
+        return { ...view, authPending: view.status === 'ACTIVA' && institutionalSessionState(user) !== 'READY',
+          sessionNeedsLogin: view.status === 'ACTIVA' && institutionalSessionState(user) === 'ACTION_REQUIRED',
+          canRequestAgain: Boolean(['ANULADA', 'PAUSADA'].includes(view.status) && beforeClose && enrollment(db.getAllUsers(false), user.id).admitted) };
       });
     return sendJson(200, { success: true, premium: user.premium || { enabled: false, meals: [], endDate: '' }, active: isPremium(user), appointments, automationConsent: user.automationConsent || null, paymentRequest: user.premiumRequest || null });
   }
@@ -1572,8 +1583,9 @@ const server = http.createServer(async (req, res) => {
     const user = db.findUserById(session.userId);
     if (!user || user.role === 'superadmin') return sendJson(403, { error: 'Acceso de estudiante requerido' });
     const membership = enrollment(db.getAllUsers(false), user.id);
-    const sessionNeedsLogin = membership.admitted && (authIssues.get(user.id)?.requiresLogin || user.legalConsent?.version !== TERMS_VERSION || (!user.password && isJwtExpired(user.unabToken)));
-    return sendJson(200, { enrollment: membership, sessionNeedsLogin });
+    const state = institutionalSessionState(user);
+    if (membership.admitted && state === 'RECOVERING') getValidUnabToken(user, false, { timeoutMs: 5000, skipProfile: true }).catch(() => {});
+    return sendJson(200, { enrollment: membership, sessionNeedsLogin: membership.admitted && state === 'ACTION_REQUIRED', sessionState: state });
   }
 
   // GET /api/student/advance-reservations?fecha=YYYY-MM-DD
@@ -1630,10 +1642,10 @@ const server = http.createServer(async (req, res) => {
       (r.alumnoCodigo === user.username || (user.dni && r.alumnoDni === user.dni)) &&
       r.tipoComida === meal &&
       r.fecha === date &&
-      r.estado === 'ACTIVA'
+      ['ACTIVA', 'CONSUMIDA'].includes(r.estado)
     );
     if (existingTicket) {
-      return sendJson(400, { success: false, error: `Ya cuentas con un ticket confirmado para ${meal} el ${date}.` });
+      return sendJson(400, { success: false, error: existingTicket.estado === 'CONSUMIDA' ? `Ya consumiste ${meal} el ${date}. Puedes solicitar otro servicio.` : `Ya cuentas con un ticket confirmado para ${meal} el ${date}.` });
     }
 
     // Create the advance reservation record
@@ -1673,7 +1685,7 @@ const server = http.createServer(async (req, res) => {
                   alumnoDni: user.dni,
                   tipoComida: meal,
                   fecha: date,
-                  estado: 'ACTIVA'
+                  estado: confirmedTicket.estado || 'ACTIVA'
                 });
                 db.markAdvanceReservationConfirmed(advance.id, confirmedTicket);
                 emitLog(`[RESERVA] Reserva confirmada en ventanilla para ${user.name} (${meal} del ${date}).`, 'success');
@@ -1725,6 +1737,9 @@ const server = http.createServer(async (req, res) => {
     if (!user) return sendJson(401, { error: 'Usuario no encontrado' });
 
     const advId = pathname.replace('/api/student/advance-reservation/', '');
+    const ownRequest = db.getAdvanceReservations({ alumnoCodigo: user.username }).find(item => item.id === advId);
+    if (!ownRequest) return sendJson(404, { error: 'Solicitud no encontrada.' });
+    if (['CONFIRMADA', 'CONSUMIDA'].includes(requestView(ownRequest, db.getAllReservations()).status)) return sendJson(409, { error: 'La solicitud ya tiene un ticket confirmado. Cancela el ticket desde tus pases.' });
     db.cancelAdvanceReservation(advId);
 
     // If student cancels their advance reservation/queue spot, check queue and auto-shutdown Sentinel if empty
@@ -1822,7 +1837,7 @@ const server = http.createServer(async (req, res) => {
           alumnoNombre: user.name,
           alumnoCodigo: user.username,
           alumnoDni: user.dni,
-          estado: 'ACTIVA'
+          estado: result.data.data.estado || 'ACTIVA'
         });
       }
     } else {
@@ -1839,11 +1854,20 @@ const server = http.createServer(async (req, res) => {
     if (!user) return sendJson(401, { error: 'Usuario no encontrado' });
 
     const resId = pathname.replace('/api/comedor/reservas/', '');
+    const knownTicket = db.getAllReservations().find(ticket => String(ticket.id) === resId);
+    if (knownTicket && knownTicket.alumnoCodigo !== user.username) return sendJson(404, { error: 'Ticket no encontrado.' });
     const token = await getValidUnabToken(user);
+    if (!token) return sendJson(503, { error: 'Estamos recuperando tu sesión institucional. Vuelve a consultar el estado de la cancelación.' });
 
-    const result = await fetchComedorApi(`/reservas/${resId}`, token, { method: 'DELETE' });
-    if (result.ok) {
+    const result = await fetchComedorApi(`/reservas/${encodeURIComponent(resId)}`, token, { method: 'DELETE' });
+    if (result.ok && result.data?.success !== false) {
       db.updateReservationStatus(resId, 'ANULADA');
+      for (const advance of db.getAdvanceReservations({ alumnoCodigo: user.username })) {
+        if ((advance.ticketId === resId || (knownTicket && advance.fecha === knownTicket.fecha && advance.tipoComida === knownTicket.tipoComida)) && ['ACTIVA', 'CONFIRMADA'].includes(advance.status)) db.cancelAdvanceReservation(advance.id);
+      }
+      checkAndManageSentinelQueue();
+      tickRailwayMasterScheduler();
+      broadcastSSE('reservation-status-changed', { student: user.username, id: resId, status: 'ANULADA' });
       emitLog(`Reserva ${resId} anulada por ${user.name}.`, 'warning');
     }
     return sendJson(result.status, result.data);
@@ -1884,6 +1908,7 @@ const server = http.createServer(async (req, res) => {
         msUntil: nextOpening.msUntil
       },
       railwaySchedulerActive: true,
+      credentialRecoveryEnabled: db.credentialRecoveryEnabled?.() || false,
       activeCandidatesCount: admittedStudents(db.getAllUsers(false)).filter(u => u.active && u.autoSniper).length,
       serverTime: getLimaTimeString()
     });

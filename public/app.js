@@ -213,6 +213,8 @@ function showAppView(user) {
     document.getElementById('panel-superadmin').style.display = 'none';
     document.getElementById('panel-student').style.display = 'block';
     document.getElementById('ramPill').style.display = 'none';
+    const date = new Date(Date.now() + serverOffset).toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
+    applyStudentPlanLayout(user.premium?.enabled && user.automationConsent?.enabled && user.premium.endDate >= date);
     initStudentPanel(user);
     loadPremiumState(true);
   }
@@ -548,7 +550,7 @@ async function loadSentinelQueue() {
         const tr = document.createElement('tr');
         const timeStr = item.createdAt ? new Date(item.createdAt).toLocaleTimeString('es-PE', { timeZone: 'America/Lima' }) : '--:--';
         const statusBadgeClass = item.isSentinel ? 'badge-warning' : 'badge-neutral';
-        const statusText = item.eligible && item.sessionNeedsLogin ? 'El alumno debe volver a ingresar' : item.eligible && item.authPending ? 'Autenticación institucional pendiente' : item.statusText || (item.isSentinel ? 'En Cola Centinela (Liberados)' : 'Reserva Anticipada');
+        const statusText = item.eligible && item.sessionNeedsLogin ? 'El alumno debe volver a ingresar' : item.eligible && item.authPending ? 'Renovando sesión automáticamente' : item.statusText || (item.isSentinel ? 'En Cola Centinela (Liberados)' : 'Reserva Anticipada');
 
         tr.innerHTML = `
           <td><strong>${item.studentName}</strong><div style="font-size: 0.74rem; color: var(--slate-500); font-family: var(--font-mono);">${item.studentUsername}</div></td>
@@ -602,6 +604,11 @@ async function loadSniperStatus() {
     const data = await res.json();
     if (!res.ok) return;
 
+    const recoveryNotice = document.getElementById('adminSessionRecoveryNotice');
+    if (recoveryNotice) {
+      recoveryNotice.hidden = data.credentialRecoveryEnabled !== false;
+      recoveryNotice.textContent = 'La recuperación de sesiones tras reinicios no está configurada. Añade INSTITUTION_CREDENTIAL_KEY en las variables del servicio de Railway y conserva esa clave en los próximos despliegues.';
+    }
     const nextBadge = document.getElementById('railwayNextOpeningBadge');
     if (nextBadge && data.nextOpening) {
       nextBadge.textContent = `${data.nextOpening.meal} (${data.nextOpening.time})`;
@@ -728,6 +735,8 @@ async function loadStudentAttendance() {
 }
 
 let mealCardsRequest = 0;
+let ticketListRequest = 0;
+const pendingMealRequests = new Set();
 
 // Render 3 Meal Cards
 async function loadStudentMealCards(targetDate) {
@@ -735,6 +744,7 @@ async function loadStudentMealCards(targetDate) {
   if (!container) return;
 
   const requestId = ++mealCardsRequest;
+  const viewerId = currentAuth?.id;
   container.innerHTML = `<div style="grid-column: 1 / -1; text-align: center; color: var(--slate-500); padding: 2rem;">Conectando con la institución. Consultando disponibilidad para el ${targetDate}...</div>`;
 
   try {
@@ -746,18 +756,30 @@ async function loadStudentMealCards(targetDate) {
       }
       return data;
     }
-    const [progData, ticketData, advanceData] = await Promise.all([
+    const [programming, tickets, advances] = await Promise.allSettled([
       readAvailability(`/api/comedor/programacion?date=${targetDate}`),
       readAvailability(`/api/comedor/reservas?fecha=${targetDate}`),
       readAvailability(`/api/student/advance-reservations?fecha=${targetDate}`)
     ]);
-    if (requestId !== mealCardsRequest) return;
+    if (advances.status !== 'fulfilled') throw advances.reason;
+    const availabilityKnown = programming.status === 'fulfilled';
+    const progData = availabilityKnown ? programming.value : { data: [] };
+    const ticketData = tickets.status === 'fulfilled' ? tickets.value : { data: [] };
+    const advanceData = advances.value;
+    if (requestId !== mealCardsRequest || currentAuth?.id !== viewerId) return;
 
     const progItems = Array.isArray(progData.data) ? progData.data : [];
-    const confirmedTickets = Array.isArray(ticketData.data) ? ticketData.data.filter(t => t.estado === 'ACTIVA') : [];
+    const confirmedTickets = Array.isArray(ticketData.data) ? ticketData.data.filter(t => ['ACTIVA', 'CONSUMIDA'].includes(t.estado)) : [];
     const advanceAppointments = Array.isArray(advanceData.data) ? advanceData.data.filter(a => a.status === 'ACTIVA') : [];
 
     container.innerHTML = '';
+    if (!availabilityKnown || tickets.status !== 'fulfilled') {
+      const notice = document.createElement('p');
+      notice.className = 'reservation-recovery-notice';
+      notice.setAttribute('role', 'status');
+      notice.textContent = 'La institución tarda en confirmar los datos. Puedes dejar una solicitud; verificaremos tu ticket y los cupos antes de reservar.';
+      container.append(notice);
+    }
 
     const mealsConfig = [
       {
@@ -812,7 +834,9 @@ async function loadStudentMealCards(targetDate) {
       card.className = 'unab-card';
 
       let buttonHtml = '';
-      if (confirmedTicket) {
+      if (confirmedTicket?.estado === 'CONSUMIDA') {
+        buttonHtml = '<button class="btn-unab-disabled" disabled>Servicio consumido</button>';
+      } else if (confirmedTicket) {
         buttonHtml = `
           <button class="btn-unab-reserved" onclick="openDigitalPass('${confirmedTicket.id}')">
             Ticket reservado
@@ -846,6 +870,8 @@ async function loadStudentMealCards(targetDate) {
             Horario cerrado
           </button>
         `;
+      } else if (!availabilityKnown || !pItem) {
+        buttonHtml = `<button class="btn-unab-primary" onclick="reserveAdvanceMeal('${meal.key}')">Solicitar reserva</button>`;
       } else if (disponibles > 0) {
         buttonHtml = `
           <button class="btn-unab-primary" onclick="reserveAdvanceMeal('${meal.key}')">
@@ -887,17 +913,17 @@ async function loadStudentMealCards(targetDate) {
 
           <div class="unab-quota-section">
             <div class="unab-disponibles-row">
-              <span class="unab-disponibles-num">${disponibles}</span>
+              <span class="unab-disponibles-num">${availabilityKnown && pItem ? disponibles : '—'}</span>
               <span class="unab-disponibles-txt">disponibles</span>
             </div>
 
             <div class="unab-despachados-row">
-              <span>Reservados y despachados</span>
-              <strong>${despachados} / ${total}</strong>
+              <span>${availabilityKnown && pItem ? 'Reservados y despachados' : 'Cupos por confirmar'}</span>
+              <strong>${availabilityKnown && pItem ? `${despachados} / ${total}` : '—'}</strong>
             </div>
 
             <div class="unab-progress-track">
-              <div class="unab-progress-fill" style="width: ${progressPercent}%;"></div>
+              <div class="unab-progress-fill" style="width: ${availabilityKnown && pItem ? progressPercent : 0}%;"></div>
             </div>
           </div>
         </div>
@@ -911,7 +937,7 @@ async function loadStudentMealCards(targetDate) {
     });
 
   } catch (err) {
-    if (requestId !== mealCardsRequest) return;
+    if (requestId !== mealCardsRequest || currentAuth?.id !== viewerId) return;
     container.replaceChildren();
     const notice = document.createElement('div');
     notice.className = 'card';
@@ -930,6 +956,8 @@ async function loadStudentMealCards(targetDate) {
 
 // Student action: Reserve advance meal
 async function reserveAdvanceMeal(meal) {
+  if (pendingMealRequests.has(meal)) return;
+  pendingMealRequests.add(meal);
   try {
     showToast(`Procesando reserva de ${meal}...`, 'info');
     const res = await fetch('/api/student/advance-reservation', {
@@ -942,12 +970,13 @@ async function reserveAdvanceMeal(meal) {
       showToast(data.message, 'success');
       loadStudentMealCards(studentViewDate);
       loadStudentTickets();
+      if (premiumActive) loadPremiumState();
     } else {
       showToast(data.error || 'No se pudo registrar la reserva', 'error');
     }
   } catch (err) {
     showToast(err.message, 'error');
-  }
+  } finally { pendingMealRequests.delete(meal); }
 }
 
 // Student action: Cancel advance reservation
@@ -958,9 +987,12 @@ async function cancelAdvancePrompt(advId, mealName) {
       method: 'DELETE',
       headers: authHeaders()
     });
+    const data = await res.json();
+    if (!res.ok || !data.success) throw new Error(data.error || 'No se pudo cancelar la solicitud.');
     if (res.ok) {
-      showToast(`Reserva anticipada de ${mealName} anulada.`, 'info');
+      showToast(`Reserva anticipada de ${mealName} anulada. Puedes volver a solicitarla.`, 'info');
       loadStudentMealCards(studentViewDate);
+      if (premiumActive) loadPremiumState();
     }
   } catch (err) {
     showToast(err.message, 'error');
@@ -971,12 +1003,16 @@ async function cancelAdvancePrompt(advId, mealName) {
 async function loadStudentTickets() {
   const container = document.getElementById('studentTicketsHolder');
   if (!container) return;
+  const requestId = ++ticketListRequest;
+  const viewerId = currentAuth?.id;
   const dateVal = new Date(Date.now() + serverOffset).toLocaleDateString('en-CA', { timeZone: 'America/Lima' });
   container.innerHTML = `<div style="text-align: center; color: var(--slate-500); padding: 1.5rem;">Cargando tus tickets...</div>`;
 
   try {
     const res = await fetch(`/api/comedor/reservas?fecha=${dateVal}`, { headers: authHeaders() });
     const data = await res.json();
+    if (requestId !== ticketListRequest || currentAuth?.id !== viewerId) return;
+    if (!res.ok || !Array.isArray(data.data)) throw new Error(data.error || data.message || 'No se pudo confirmar el estado de tus tickets.');
     studentTickets = Array.isArray(data.data) ? data.data : [];
 
     const activeTickets = studentTickets.filter(t => t.estado === 'ACTIVA');
@@ -1047,7 +1083,15 @@ async function loadStudentTickets() {
       }, 50);
     });
   } catch (err) {
-    container.innerHTML = `<div style="color: var(--rose);">Error: ${err.message}</div>`;
+    if (requestId !== ticketListRequest || currentAuth?.id !== viewerId) return;
+    const notice = document.createElement('p');
+    notice.setAttribute('role', 'status');
+    notice.textContent = 'Todavía no podemos confirmar tus tickets. ' + err.message;
+    const retry = document.createElement('button');
+    retry.className = 'btn btn-secondary';
+    retry.textContent = 'Volver a consultar tickets';
+    retry.addEventListener('click', loadStudentTickets);
+    container.replaceChildren(notice, retry);
   }
 }
 
@@ -1061,12 +1105,15 @@ async function cancelStudentReservation(id) {
       method: 'DELETE',
       headers: authHeaders()
     });
+    const data = await res.json();
+    if (!res.ok || data.success === false) throw new Error(data.error || data.message || 'No se pudo confirmar la cancelación.');
     if (res.ok) {
-      showToast('Reserva anulada. Cupo liberado.', 'info');
+      showToast('Reserva anulada. Puedes solicitar otro servicio o volver a reservar.', 'info');
       loadStudentTickets();
       loadStudentMealCards(studentViewDate);
+      if (premiumActive) loadPremiumState();
     }
-  } catch {}
+  } catch (error) { showToast(error.message, 'error'); }
 }
 
 // Digital Pass Modal
@@ -1220,6 +1267,17 @@ document.addEventListener('DOMContentLoaded', () => {
 let editingPremiumUserId = null;
 const premiumMealNames = { DESAYUNO: 'Desayuno', ALMUERZO: 'Almuerzo', CENA: 'Cena' };
 
+function applyStudentPlanLayout(enabled) {
+  premiumActive = Boolean(enabled);
+  setPageTheme(premiumActive ? '#0e243b' : '#6ca8ed');
+  document.body.classList.toggle('premium-session', premiumActive);
+  document.getElementById('panel-student').style.display = premiumActive ? 'none' : 'block';
+  document.getElementById('panel-premium').style.display = premiumActive ? 'block' : 'none';
+  document.getElementById(premiumActive ? 'premiumTicketsHolder' : 'student-tab-tickets').appendChild(document.getElementById('studentTicketsHolder'));
+  document.getElementById(premiumActive ? 'premiumMealCardsHolder' : 'studentMealCardsHome').appendChild(document.getElementById('studentMealCardsContainer'));
+  document.getElementById('userRoleBadge').textContent = premiumActive ? 'Estudiante Premium · Mi Mesa' : 'Estudiante · Mi Mesa';
+}
+
 async function loadPremiumState(showOffer = false) {
   if (!currentAuth || currentAuth.role === 'superadmin') return;
   const userId = currentAuth.id;
@@ -1234,16 +1292,9 @@ async function loadPremiumState(showOffer = false) {
       closeModal('modalPremium');
       showToast('Premium activado por el administrador.', 'success');
     }
-    setPageTheme(premiumActive ? '#0e243b' : '#6ca8ed');
     currentAuth.premium = data.premium;
     currentAuth.automationConsent = data.automationConsent;
-    document.body.classList.toggle('premium-session', premiumActive);
-    document.getElementById('panel-student').style.display = premiumActive ? 'none' : 'block';
-    document.getElementById('panel-premium').style.display = premiumActive ? 'block' : 'none';
-    const holder = document.getElementById('studentTicketsHolder');
-    const target = document.getElementById(premiumActive ? 'premiumTicketsHolder' : 'student-tab-tickets');
-    target.appendChild(holder);
-    document.getElementById('userRoleBadge').textContent = premiumActive ? 'Estudiante Premium · Mi Mesa' : 'Estudiante · Mi Mesa';
+    applyStudentPlanLayout(premiumActive);
     document.getElementById('premiumCycleSummary').textContent = premiumActive ? `Servicios configurados por el administrador hasta ${data.premium.endDate}. Cancelación preventiva: ${data.automationConsent?.autoCancel ? 'habilitada' : 'deshabilitada'}.` : '';
     document.getElementById('premiumSelectedMeals').textContent = data.premium.meals.map(meal => premiumMealNames[meal]).join(' · ') || 'Elige tus comidas';
     renderPremiumRequests(data.appointments || []);
@@ -1261,8 +1312,8 @@ function updatePremiumModal() {
 }
 
 document.getElementById('btnPremiumOffer').addEventListener('click', () => { updatePremiumModal(); openModal('modalPremium'); });
-document.getElementById('btnPremiumSettings').addEventListener('click', () => { updatePremiumModal(); openModal('modalPremium'); });
-document.getElementById('btnPremiumRefresh').addEventListener('click', async () => { await loadPremiumState(); loadStudentTickets(); });
+document.getElementById('btnPremiumMealsRefresh').addEventListener('click', () => loadStudentMealCards(studentViewDate));
+document.getElementById('btnPremiumRefresh').addEventListener('click', async () => { await loadPremiumState(); loadStudentTickets(); loadStudentMealCards(studentViewDate); });
 
 function configureUserPremium(id) {
   const user = adminUsersList.find(user => user.id === id);
@@ -1335,23 +1386,27 @@ function renderPremiumRequests(appointments) {
     const date = document.createElement('p');
     date.textContent = request.date;
     const state = document.createElement('strong');
-    state.textContent = request.authPending ? 'Esperando autenticación institucional' : labels[request.status] || request.status;
+    state.textContent = request.sessionNeedsLogin ? 'Se necesita recuperar el acceso institucional' : request.authPending ? 'Renovando sesión automáticamente' : labels[request.status] || request.status;
     card.append(heading, date, state);
     if (request.status === 'ACTIVA') {
       const cancel = document.createElement('button');
       cancel.className = 'btn btn-secondary btn-sm';
       cancel.textContent = 'Cancelar esta solicitud';
-      cancel.addEventListener('click', async () => {
-        await cancelAdvancePrompt(request.id, premiumMealNames[request.meal] || request.meal);
-        await loadPremiumState();
-      });
+      cancel.addEventListener('click', () => cancelAdvancePrompt(request.id, premiumMealNames[request.meal] || request.meal));
       card.append(cancel);
+    }
+    if (request.canRequestAgain) {
+      const retry = document.createElement('button');
+      retry.className = 'btn btn-primary btn-sm';
+      retry.textContent = 'Volver a solicitar';
+      retry.addEventListener('click', () => reserveAdvanceMeal(request.meal));
+      card.append(retry);
     }
     container.append(card);
   }
 }
 
-function renderEnrollment(value, sessionNeedsLogin = false) {
+function renderEnrollment(value, sessionNeedsLogin = false, sessionState = null) {
   if (!value) return;
   document.getElementById('studentEnrollmentPosition').textContent = value.admitted
     ? `Tu registro: ${value.position} de ${value.limit}`
@@ -1360,7 +1415,8 @@ function renderEnrollment(value, sessionNeedsLogin = false) {
     ? `${value.total} alumnos registrados. Premium tiene prioridad; en cada grupo se respeta el orden de registro.`
     : 'Tu cuenta se conserva. Las reservas están disponibles para los primeros registros dentro del cupo.';
   document.getElementById('btnRefreshInstitutionalSession').hidden = !sessionNeedsLogin;
-  if (sessionNeedsLogin) document.getElementById('studentEnrollmentDetail').textContent += ' Vuelve a ingresar para preparar tu sesión institucional antes de la apertura.';
+  if (sessionNeedsLogin) document.getElementById('studentEnrollmentDetail').textContent += ' Se necesita autenticar esta cuenta para recuperar la sesión institucional.';
+  else if (sessionState === 'RECOVERING') document.getElementById('studentEnrollmentDetail').textContent += ' Estamos renovando tu sesión automáticamente; tus solicitudes conservan su lugar.';
 }
 
 async function loadEnrollment() {
@@ -1372,7 +1428,7 @@ async function loadEnrollment() {
     if (!response.ok || currentAuth?.id !== userId || !data.enrollment) return;
     const previous = currentAuth.enrollment?.admitted;
     currentAuth.enrollment = data.enrollment;
-    renderEnrollment(data.enrollment, data.sessionNeedsLogin);
+    renderEnrollment(data.enrollment, data.sessionNeedsLogin, data.sessionState);
     if (previous !== undefined && previous !== data.enrollment.admitted) loadStudentMealCards(studentViewDate);
   } catch (_) {}
 }
