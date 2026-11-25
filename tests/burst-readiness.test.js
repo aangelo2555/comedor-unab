@@ -573,3 +573,45 @@ test('an administrator pausing automation while the opening batch waits prevents
   await running;
   assert.deepEqual(Array.from(vm.runInContext('sent',context)),['Bearer two']);
 });
+
+test('parallel opening permission is created at the scheduled opening but not for a late manual rerun',async()=>{
+  for(const time of ['2026-11-19T17:00:00.010-05:00','2026-11-19T17:02:00-05:00']) {
+    const {context,intervals}=createBurstHarness();
+    context.testTime=time;
+    vm.runInContext(`
+      Date.now=()=>Date.parse(testTime);
+      menu=[{id:'dinner',tipoComida:'CENA'}];
+      let openingPermissions=0;
+      const originalOpenBurst=upstreamGate.openBurst.bind(upstreamGate);
+      upstreamGate.openBurst=options=>{openingPermissions++;return originalOpenBurst(options);};
+      fetchUnabResponse=async(url,options)=>options.method==='POST'?{ok:false,status:409,data:{message:'pending'}}:{ok:true,status:200,data:{data:[]}};
+    `,context);
+    await vm.runInContext('executeMultiUserBurst()',context);
+    await intervals.at(-1)();
+    assert.equal(vm.runInContext('openingPermissions',context),time.includes('17:00:00')?1:0);
+  }
+});
+
+test('arming inside the last minute immediately performs the final ticket preparation',async()=>{
+  const {context}=createBurstHarness();
+  const timers=[];
+  context.setTimeout=(callback,delay)=>{timers.push({callback,delay});return timers.length;};
+  context.clearTimeout=()=>{};
+  const target=new Date(Date.now()+30000);
+  context.targetDate=target.toLocaleDateString('en-CA',{timeZone:'America/Lima'});
+  context.targetTime=target.toLocaleTimeString('en-GB',{timeZone:'America/Lima',hourCycle:'h23'});
+  vm.runInContext(`
+    isJwtExpired=()=>false;
+    let checked=0;
+    const verificationFlags=[];
+    db.getAdvanceReservations().forEach(item=>item.fecha=targetDate);
+    MEAL_CONFIGS.CENA.horaInicio=targetTime;
+    getValidUnabToken=async(user,verify)=>{verificationFlags.push(verify);return 'token';};
+    reserveOnce.prepare=async()=>{checked++;return true;};
+    startGlobalSniper({targetMeal:'CENA',targetDate,targetTime});
+  `,context);
+  assert.equal(timers[0].delay,0);
+  await timers[0].callback();
+  assert.equal(vm.runInContext('checked',context),2);
+  assert.deepEqual(Array.from(vm.runInContext('verificationFlags',context)),[false,false]);
+});

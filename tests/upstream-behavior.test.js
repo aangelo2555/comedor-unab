@@ -153,3 +153,37 @@ test('a stale preflight sends no POST and request-start metrics are not passed t
   assert.equal(calls,1);
   assert.equal(vm.runInContext('started',context),1);
 });
+
+test('the HTTP wrapper starts 13 reservation POSTs together and keeps burst credentials out of fetch options',async()=>{
+  let calls=0,release;
+  const held=new Promise(resolve=>{release=resolve;});
+  const context=createContext(async(url,options)=>{
+    assert.equal(options.openingBurst,undefined);
+    calls++;await held;
+    return Response.json({success:true,data:{id:'ticket'}});
+  });
+  const batch=vm.runInContext(`{
+    const permit=upstreamGate.openBurst({maxStarts:13});
+    Promise.all(Array.from({length:13},()=>fetchUnabResponse('https://comedor-api.unab.edu.pe/v1/reservas',{method:'POST',openingBurst:permit},false)));
+  }`,context);
+  try {await new Promise(resolve=>setTimeout(resolve,0));assert.equal(calls,13);}
+  finally {release();await batch;}
+});
+
+test('opening permits cannot accelerate institutional login or ordinary ticket reads',async()=>{
+  for(const request of ["'https://api-login-dev.unab.edu.pe/auth/login',{method:'POST',openingBurst:permit}","'https://comedor-api.unab.edu.pe/v1/reservas/me',{openingBurst:permit}"]) {
+    let calls=0,release;
+    const held=new Promise(resolve=>{release=resolve;});
+    const context=createContext(async()=>{calls++;await held;return Response.json({data:[]});});
+    const batch=vm.runInContext(`{const permit=upstreamGate.openBurst({maxStarts:13});Promise.all(Array.from({length:13},()=>fetchUnabResponse(${request},false)));}`,context);
+    try {await new Promise(resolve=>setTimeout(resolve,0));assert.ok(calls>=1 && calls<=2,'Ordinary requests remain bounded at two in flight');}
+    finally {release();await batch;}
+  }
+});
+
+test('the observed reservation saturation message triggers the shared provider pause',async()=>{
+  const context=createContext(async()=>Response.json({success:false,message:'Hay muchas reservas simultáneas. Vuelve a intentarlo en unos segundos.'},{status:409,headers:{'Retry-After':'0.02'}}));
+  vm.runInContext('const pauses=[];upstreamGate.pause=value=>pauses.push(value);',context);
+  await vm.runInContext("fetchUnabResponse('https://comedor-api.unab.edu.pe/v1/reservas',{method:'POST'},false)",context);
+  assert.deepEqual(Array.from(vm.runInContext('pauses',context)),[20]);
+});

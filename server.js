@@ -25,7 +25,8 @@ function positiveInteger(value, fallback, maximum) {
 }
 const upstreamGate = new RequestGate({
   concurrency: positiveInteger(process.env.UNAB_MAX_CONCURRENCY, 2, 10),
-  intervalMs: positiveInteger(process.env.UNAB_REQUEST_INTERVAL_MS, 500, 60000)
+  intervalMs: positiveInteger(process.env.UNAB_REQUEST_INTERVAL_MS, 500, 60000),
+  openingConcurrency: positiveInteger(process.env.UNAB_OPENING_CONCURRENCY, 50, 50)
 });
 const reserveOnce = createReservationService(fetchComedorApi);
 const upstreamFailures = new Map();
@@ -174,14 +175,15 @@ async function fetchUnabResponse(url, options = {}, retryable = true) {
           return { ok: false, status: 409, data: { message: 'Solicitud cancelada o fuera de horario.' } };
         }
         if (options.validatePreflight && !options.validatePreflight()) return { ok: false, status: 409, data: { code: 'PREFLIGHT_STALE', message: 'Se requiere verificar nuevamente el ticket antes de enviar.' } };
-        const { canProceed, priority, timeoutMs, skipProfile, validatePreflight, onRequestStart, ...fetchOptions } = options;
+        const { canProceed, priority, timeoutMs, skipProfile, validatePreflight, onRequestStart, openingBurst, ...fetchOptions } = options;
         const request = fetch(url, { ...fetchOptions, signal: AbortSignal.timeout(timeoutMs || 20000) });
         try { onRequestStart?.({ startedAt: Date.now(), queuedMs: Date.now() - queuedAt }); } catch {}
         const res = await request;
         const text = await res.text();
         let data;
         try { data = JSON.parse(text); } catch { data = text; }
-        if (res.status === 429 || res.status >= 500) {
+        const saturation = /muchas reservas simult[aá]neas|demasiadas solicitudes|too many requests/i.test(typeof data?.message === 'string' ? data.message : '');
+        if (res.status === 429 || res.status >= 500 || saturation) {
           const host = new URL(url).hostname;
           const failures = upstreamFailures.get(host) || 0;
           upstreamFailures.set(host, Math.min(failures + 1, 5));
@@ -193,7 +195,8 @@ async function fetchUnabResponse(url, options = {}, retryable = true) {
         }
         return { ok: res.ok, status: res.status, data };
       }, options.priority || 0, () => options.validatePreflight && !options.validatePreflight()
-        ? { ok: false, status: 409, data: { code: 'PREFLIGHT_STALE', message: 'Se requiere verificar nuevamente el ticket antes de enviar.' } } : undefined);
+        ? { ok: false, status: 409, data: { code: 'PREFLIGHT_STALE', message: 'Se requiere verificar nuevamente el ticket antes de enviar.' } } : undefined,
+        options.method === 'POST' && url === 'https://comedor-api.unab.edu.pe/v1/reservas' ? options.openingBurst : undefined);
       if (attempt + 1 < attempts && (response.status === 429 || response.status >= 500)) continue;
       return response;
     } catch (err) {
@@ -618,7 +621,7 @@ function startGlobalSniper(options = {}) {
       if (isCurrentWarmup()) emitLog(`[WARMUP] ${result.ready}/${result.total} sesiones preparadas con vigencia para la apertura.`, result.ready === result.total ? 'success' : 'warning');
     } catch (error) { emitLog('[WARMUP] Preparación pendiente. Se volverá a comprobar la sesión al abrir.', 'warning'); }
   }
-  warmupTimerId = setTimeout(() => warmSessions(true), Math.max(0, msUntilTarget - WARMUP_LEAD_MS));
+  warmupTimerId = setTimeout(() => warmSessions(msUntilTarget > REFRESH_LEAD_MS), Math.max(0, msUntilTarget - WARMUP_LEAD_MS));
   if (msUntilTarget > REFRESH_LEAD_MS) {
     warmupRefreshTimerId = setTimeout(() => warmSessions(false), msUntilTarget - REFRESH_LEAD_MS);
   }
@@ -1037,7 +1040,10 @@ async function executeMultiUserBurst() {
         const detectedAt = Date.now();
         emitLog(`[DISPARO] Programación detectada con ${menuFound.length} servicios para ${runDate}. Procesando reservas...`, 'success');
 
-        globalSniper.lastDispatchTiming = { detectedAt: new Date(detectedAt).toISOString(), firstPostDelayMs: null, dispatched: 0 };
+        const openingBurst = Number.isFinite(openingTs) && detectedAt - openingTs <= 60000
+          ? upstreamGate.openBurst({ maxStarts: activeCandidates.length }) : undefined;
+        globalSniper.lastDispatchTiming = { detectedAt: new Date(detectedAt).toISOString(), firstPostDelayMs: null, lastPostDelayMs: null, dispatched: 0 };
+        if (openingBurst) emitLog(`[DISPARO] Lote de apertura paralelo: hasta ${activeCandidates.length} envíos, sin separación artificial para las sesiones preparadas.`, 'info');
         // Queue ready students without waiting for earlier confirmations. The shared gate still controls network concurrency/rate.
         const finalResults = await mapWithConcurrency(activeCandidates, activeCandidates.length, async (student) => {
           if (!isCurrentRun()) return { user: student.username, results: [{ success: false, message: 'Ejecución cancelada' }] };
@@ -1081,8 +1087,10 @@ async function executeMultiUserBurst() {
                   .some(item => item.tipoComida.toUpperCase() === meal), {
                   priority: isPremium(student, runDate) ? 3 : 1,
                   preparedOpeningTs: openingTs,
+                  openingBurst,
                   onWriteStart: ({ startedAt, queuedMs }) => {
                     globalSniper.lastDispatchTiming.dispatched++;
+                    globalSniper.lastDispatchTiming.lastPostDelayMs = startedAt - detectedAt;
                     if (globalSniper.lastDispatchTiming.firstPostDelayMs === null) {
                       globalSniper.lastDispatchTiming.firstPostDelayMs = startedAt - detectedAt;
                       emitLog(`[LATENCIA] Primer POST iniciado ${startedAt - detectedAt} ms después de detectar programación; espera interna ${queuedMs} ms.`, 'info');
@@ -1124,6 +1132,8 @@ async function executeMultiUserBurst() {
 
         if (!isCurrentRun()) return;
         globalSniper.lastRunResults = finalResults;
+        const timing = globalSniper.lastDispatchTiming;
+        emitLog(`[LATENCIA] ${timing.dispatched} POST iniciados: primero a ${timing.firstPostDelayMs ?? 'sin envío'} ms y último a ${timing.lastPostDelayMs ?? 'sin envío'} ms desde la detección.`, 'info');
         broadcastSSE('reservation-batch-finished', finalResults);
 
         // Check if any student truly failed to get tickets; if so, keep Sentinel running

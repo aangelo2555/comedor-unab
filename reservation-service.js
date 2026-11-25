@@ -27,11 +27,11 @@ function createReservationService(callApi) {
     requestOptions,
     proof
   ) {
-    const { preparedOpeningTs, onWriteStart, ...apiOptions } = requestOptions || {};
+    const { preparedOpeningTs, onWriteStart, openingBurst, ...apiOptions } = requestOptions || {};
     proof = proofValid(proof) ? proof : null;
     const query = `/reservas/me?fecha=${encodeURIComponent(date)}`;
     const existing = proof ? { ok: true, data: { data: [] } } : await callApi(query, token, requestOptions ? apiOptions : undefined);
-    if (!existing.ok || !Array.isArray(existing.data?.data)) {
+    if (!existing.ok || existing.data?.success === false || !Array.isArray(existing.data?.data)) {
       return {
         ok: false,
         status: 503,
@@ -58,6 +58,7 @@ function createReservationService(callApi) {
       };
     const result = await callApi('/reservas', token, {
       ...apiOptions,
+      ...(openingBurst ? { openingBurst } : {}),
       ...(proof ? { validatePreflight: () => proofValid(proof) } : {}),
       ...(onWriteStart ? { onRequestStart: onWriteStart } : {}),
       priority: Math.max(apiOptions.priority || 0, preparedOpeningTs ? 2 : 0),
@@ -138,7 +139,7 @@ function createReservationService(callApi) {
     const generation = generations.get(key) || 0;
     const epoch = preparationEpoch;
     const result = await callApi(`/reservas/me?fecha=${encodeURIComponent(date)}`, token, options);
-    if (!result.ok || !Array.isArray(result.data?.data) || pending.has(key) || generation !== (generations.get(key) || 0) || epoch !== preparationEpoch || (options.canProceed && !options.canProceed())) return false;
+    if (!result.ok || result.data?.success === false || !Array.isArray(result.data?.data) || pending.has(key) || generation !== (generations.get(key) || 0) || epoch !== preparationEpoch || (options.canProceed && !options.canProceed())) return false;
     if (result.data.data.some(item => (item.tipoComida || '').toUpperCase() === meal.toUpperCase() && (!item.fecha || item.fecha === date) && ['ACTIVA', 'CONSUMIDA'].includes(item.estado))) return false;
     if (Date.now() >= openingTs) return false;
     prepared.set(key, { token, openingTs, epoch, checkedAt: Date.now() });

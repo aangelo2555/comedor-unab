@@ -99,3 +99,25 @@ test('a locally expired preparation does not consume a provider rate-limit slot'
   ]);
   assert.equal(calls,1);
 });
+
+test('the opening permit is forwarded only to the coordinated POST, never the precheck',async()=>{
+  const permit={};
+  const reserve=createReservationService(async(endpoint,token,options)=>{
+    if(options?.method==='POST') {
+      assert.equal(options.openingBurst,permit);
+      return {ok:true,data:{success:true,data:{id:'ticket'}}};
+    }
+    assert.equal(options?.openingBurst,undefined);
+    return {ok:true,data:{data:[]}};
+  });
+  await reserve('student','token','dinner',date,'CENA',()=>true,{openingBurst:permit});
+});
+
+test('an HTTP 200 error with an empty ticket list cannot authorize a reservation',async()=>{
+  const reserve=createReservationService(async(endpoint,token,options)=>{
+    assert.notEqual(options?.method,'POST');
+    return {ok:true,data:{success:false,data:[],message:'Temporalmente no disponible'}};
+  });
+  const result=await reserve('student','token','dinner',date,'CENA');
+  assert.equal(result.ok,false);
+});
