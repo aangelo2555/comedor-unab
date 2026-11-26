@@ -26,7 +26,7 @@ test('50 sessions are prepared with bounded workers and validity beyond opening'
     }
   });
   assert.equal(WARMUP_LEAD_MS, 300000);
-  assert.equal(REFRESH_LEAD_MS, 60000);
+  assert.equal(REFRESH_LEAD_MS, 90000);
   assert.equal(PUBLICATION_POLL_MS, 250);
   assert.equal(result.ready, 50);
   assert.ok(peak <= 2);

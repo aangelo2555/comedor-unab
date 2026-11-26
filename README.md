@@ -66,7 +66,7 @@ Las solicitudes de cada comida se procesan primero para Premium. Dentro de cada 
 
 La preparación comienza cinco minutos antes de la apertura. Se vuelve a revisar la cola un minuto antes para incorporar alumnos recién ingresados y renovar tokens próximos a vencer. La vigencia requerida cubre la apertura y al menos dos minutos posteriores. Se utilizan dos trabajadores de preparación y se omite la consulta opcional del perfil durante ese paso.
 
-La comprobación del último minuto utiliza los tokens vigentes directamente y renueva los que lo necesitan. Una sesión ya preparada puede reservar mientras termina una comprobación de fondo. Con la recuperación cifrada configurada se recuperan las credenciales después de un reinicio. Sin clave o sin credenciales guardadas previamente, el alumno deberá ingresar una vez. Su panel indica cuándo necesita hacerlo.
+La comprobación final empieza 90 segundos antes de la apertura y utiliza los tokens vigentes directamente y renueva los que lo necesitan. Una sesión ya preparada puede reservar mientras termina una comprobación de fondo. Con la recuperación cifrada configurada se recuperan las credenciales después de un reinicio. Sin clave o sin credenciales guardadas previamente, el alumno deberá ingresar una vez. Su panel indica cuándo necesita hacerlo.
 
 El sondeo inicial de publicación se programa cada 250 ms, sujeto al presupuesto global de peticiones. El centinela revisa cada segundo cuando está libre. Las operaciones de apertura tienen preferencia sobre consultas ordinarias dentro de ese presupuesto. Las consultas y los reintentos ordinarios continúan con dos peticiones simultáneas y 500 ms entre inicios. El primer lote de POST de apertura utiliza el modo paralelo descrito más abajo. Los errores temporales y `Retry-After` mantienen sus esperas.
 
@@ -109,14 +109,35 @@ El administrador conserva el control de la activación, servicios recurrentes, f
 
 El lote prepara hasta 50 operaciones sin esperar la confirmación de los primeros alumnos. Las consultas y reintentos ordinarios siguen aplicando `UNAB_MAX_CONCURRENCY` (2 por defecto) y `UNAB_REQUEST_INTERVAL_MS` (500 ms por defecto). Los POST del primer lote de apertura salen en paralelo, sin ese espaciado, mediante una autorización interna limitada a un envío por candidato, un máximo de 50 y una vigencia de 10 segundos. Se crea solo cuando la programación se detecta durante el primer minuto del horario oficial. `UNAB_OPENING_CONCURRENCY` permite reducir la concurrencia de apertura y vale 50 por defecto. Las consultas que ya estaban en curso pueden coexistir con esos POST. Los POST de apertura tienen preferencia sobre verificaciones ordinarias; las operaciones Premium conservan mayor prioridad.
 
-Durante la revisión del último minuto se comprueba también si ya existe un ticket para el servicio. Solo una comprobación correcta sin ticket genera una preparación reutilizable, ligada al alumno, fecha, servicio, token y hora de apertura. Esa comprobación debe tener menos de 90 segundos y solo se acepta durante los primeros 2,5 segundos tras la apertura; se revisa otra vez al salir de la cola de red. Si caduca, se realiza una consulta fresca antes del POST. Las cancelaciones y la detención del motor invalidan la preparación, y la deduplicación por alumno/fecha/servicio permanece activa. La comprobación no es un bloqueo de operaciones realizadas desde el portal institucional.
+Durante la revisión final se comprueba también si ya existe un ticket para el servicio. Solo una comprobación correcta sin ticket genera una preparación reutilizable, ligada al alumno, fecha, servicio, token y hora de apertura. Esa comprobación debe tener como máximo 120 segundos y solo se acepta durante los primeros 4 segundos tras la apertura; se revisa otra vez al salir de la cola de red. Si caduca, se realiza una consulta fresca antes del POST. Las cancelaciones y la detención del motor invalidan la preparación, y la deduplicación por alumno/fecha/servicio permanece activa. La comprobación no es un bloqueo de operaciones realizadas desde el portal institucional.
 
 Los registros `[LATENCIA]` indican el tiempo desde la detección de programación hasta el inicio del primer POST y su espera interna. Los registros de reserva confirmada miden la llegada del resultado, no el momento de envío. `lastDispatchTiming` expone los agregados del último lote en el estado del motor. El motor no procesa una programación publicada antes de que comience el horario oficial. Nunca se promete confirmación en milisegundos: la latencia y la aceptación del proveedor siguen determinando el resultado del lote. Las pausas por saturación, 429/Retry-After y bloqueos 403 también se aplican al modo paralelo. No se acelera el login ni se repiten POST a ciegas.
 
-Si el motor se arma durante el último minuto, la comprobación previa de tickets se inicia inmediatamente, sin esperar otro temporizador. Las credenciales faltantes permanecen pendientes y no retrasan a las sesiones que ya están listas. Los registros de latencia incluyen el inicio del primer y del último POST del lote para distinguir el despacho de la confirmación institucional.
+Si el motor se arma con poco tiempo disponible, la comprobación previa de tickets se inicia inmediatamente, sin esperar otro temporizador. Las credenciales faltantes permanecen pendientes y no retrasan a las sesiones que ya están listas. Los registros de latencia incluyen el inicio del primer y del último POST del lote para distinguir el despacho de la confirmación institucional.
 
 ## Cancelación administrativa de solicitudes pendientes
 
 El botón de la cola administrativa utiliza `DELETE /api/admin/advance-reservations/:id`, exclusivo de SuperAdmin. Puede retirar solicitudes locales aunque el alumno no tenga sesión o credenciales institucionales. Conserva la cuenta, el plan Premium y las demás solicitudes; la cancelación es idempotente y se registra con el administrador que la realizó. Las vistas y contadores se actualizan por eventos y tras la respuesta del botón.
 
 Retirar una solicitud de la cola no cancela tickets institucionales. Se rechaza esa acción si ya hay un ticket confirmado/consumido o si el POST de reserva ya salió y aún se está confirmando su resultado. Si el POST no ha salido, la cancelación invalida su preparación y los controles de vigencia impiden enviarlo. El cliente muestra los errores del servidor en lugar de ignorarlos.
+
+
+La revisión final se repite cada 10 segundos después de terminar la pasada anterior,
+sin repetir consultas de tickets que ya tienen una preparación válida. Incluye a
+alumnos que ingresan o se incorporan tarde. Deja de iniciar trabajo de preparación
+5 segundos antes de abrir, y descarta el trabajo cancelado antes de gastar un turno
+de red. Las consultas de preparación tienen un límite de 5 segundos por intento.
+Al reiniciar cerca de la apertura, se priorizan las comprobaciones de tickets para
+no solaparlas con una pasada remota adicional de elegibilidad.
+
+La detección de publicación utiliza primero un alumno que ya tenga token vigente,
+con prioridad sobre consultas ordinarias pendientes. Una cuenta con autenticación
+pendiente no retiene a las demás. Las consultas de programación se limitan a 3
+segundos por intento; se mantienen las pausas institucionales y `Retry-After`.
+Esto no garantiza la aceptación antes de que se agoten los cupos: depende de la
+red y de la respuesta y límites de la institución. Los POST del lote preparado
+siguen saliendo en paralelo, con un máximo de 50 inicios especiales por apertura.
+
+Para reproducir la prueba de cupos que desaparecen a los 3,5 segundos, consulta
+[las instrucciones del simulador](simulation/README.md) y
+[el informe de la ventana de apertura](reports/opening-window.md).

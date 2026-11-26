@@ -241,7 +241,12 @@ function normalizeDb() {
 
   let recoveryFailures = 0;
   for (const user of cache.users) {
-    if (user.role === 'superadmin' || user.legalConsent?.version !== TERMS_VERSION) continue;
+    // Hash when credentials enter memory, rather than on every audit/state save.
+    if (user.role === 'superadmin') {
+      user.password = hashPassword(user.password);
+      continue;
+    }
+    if (user.legalConsent?.version !== TERMS_VERSION) continue;
     const recovered = openCredentials(cache.institutionalCredentials?.[user.id], user, credentialKey);
     if (recovered) { user.password = recovered.password; user.unabToken = recovered.token; }
     else if (credentialKey && cache.institutionalCredentials?.[user.id]) recoveryFailures++;
@@ -307,7 +312,7 @@ function addUser(userData) {
   const newUser = {
     id: `usr-${crypto.randomBytes(4).toString('hex')}`,
     username: userData.username.trim(),
-    password: userData.password.trim(),
+    password: role === 'superadmin' ? hashPassword(userData.password.trim()) : userData.password.trim(),
     role,
     ...(role !== 'superadmin' ? { registrationOrder } : {}),
     name: userData.name || userData.username,
@@ -336,7 +341,7 @@ function updateUser(id, updateData) {
   if (updateData.name !== undefined) u.name = updateData.name;
   if (updateData.dni !== undefined) u.dni = updateData.dni;
   if (updateData.campus !== undefined) u.campus = updateData.campus;
-  if (updateData.password !== undefined) u.password = updateData.password;
+  if (updateData.password !== undefined) u.password = u.role === 'superadmin' ? hashPassword(updateData.password) : updateData.password;
   if (updateData.active !== undefined) u.active = updateData.active;
   if (updateData.autoSniper !== undefined) u.autoSniper = updateData.autoSniper;
   if (updateData.targetMeal) u.targetMeal = updateData.targetMeal;

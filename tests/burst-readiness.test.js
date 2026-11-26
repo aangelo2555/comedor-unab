@@ -87,6 +87,88 @@ test('partial programming keeps polling until the target meal is published', asy
   assert.equal(vm.runInContext('sentinelStarted', context), false);
 });
 
+test('publication uses a ready student before any pending login can stall the opening',async()=>{
+  const {context,intervals}=createBurstHarness();
+  vm.runInContext(`
+    const readyStudent=db.getAllUsers(false)[1];
+    readyStudent.unabToken='e30.'+Buffer.from(JSON.stringify({exp:Math.floor(Date.now()/1000)+3600})).toString('base64url')+'.test';
+    getValidUnabToken=async user=>{
+      probeUsers.push(user.id);
+      if(user.id==='one') throw Error('An unprepared login blocked discovery');
+      return readyStudent.unabToken;
+    };
+  `,context);
+  await vm.runInContext('executeMultiUserBurst()',context);
+  await intervals.at(-1)();
+  assert.deepEqual(Array.from(vm.runInContext('probeUsers',context)),['two']);
+});
+
+test('a revoked publication probe rotates without awaiting its stalled authentication',async()=>{
+  const {context,intervals}=createBurstHarness();
+  vm.runInContext(`
+    getValidUnabToken=tokenResolver;
+    fetchComedorApi=apiCaller;
+    db.updateUser=(id,patch)=>Object.assign(db.findUserById(id),patch);
+    for(const student of db.getAllUsers(false)) student.unabToken='e30.'+Buffer.from(JSON.stringify({exp:Math.floor(Date.now()/1000)+3600,sub:student.id})).toString('base64url')+'.test';
+    const rejectedToken=db.getAllUsers(false)[0].unabToken;
+    const programmingTokens=[];
+    let unexpectedRenewals=0;
+    authenticateUserWithUnab=async()=>{unexpectedRenewals++;return new Promise(()=>{});};
+    fetchUnabResponse=async(url,options)=>{
+      programmingTokens.push(options.headers.Authorization);
+      return options.headers.Authorization==='Bearer '+rejectedToken
+        ? {ok:false,status:401,data:{}}
+        : {ok:true,status:200,data:{data:[]}};
+    };
+  `,context);
+  await vm.runInContext('executeMultiUserBurst()',context);
+  const tick=intervals.at(-1);
+  await Promise.race([tick(),new Promise((resolve,reject)=>setTimeout(()=>reject(Error('Revoked probe held opening discovery')),200))]);
+  await tick();
+  assert.equal(vm.runInContext('unexpectedRenewals',context),0);
+  assert.equal(vm.runInContext('programmingTokens.length',context),2);
+  assert.equal(vm.runInContext("programmingTokens[1]==='Bearer '+db.getAllUsers(false)[1].unabToken",context),true);
+});
+
+test('rolling final passes prepare late arrivals without repeating valid ticket checks',async()=>{
+  const {context}=createBurstHarness();
+  const timers=[];
+  context.setTimeout=(callback,delay)=>{timers.push({callback,delay});return timers.length;};
+  context.clearTimeout=()=>{};
+  const target=new Date(Date.now()+120000);
+  context.targetDate=target.toLocaleDateString('en-CA',{timeZone:'America/Lima'});
+  context.targetTime=target.toLocaleTimeString('en-GB',{timeZone:'America/Lima',hourCycle:'h23'});
+  vm.runInContext(`
+    const preparedIds=new Set(), checks=[];
+    db.getAllUsers(false)[1].premium={enabled:true,endDate:targetDate,meals:['CENA']};
+    db.getAllUsers(false)[1].automationConsent={enabled:true};
+    isJwtExpired=()=>false;
+    getValidUnabToken=async()=> 'token';
+    db.getAdvanceReservations().forEach(item=>{item.fecha=targetDate;});
+    MEAL_CONFIGS.CENA.horaInicio=targetTime;
+    reserveOnce.isPrepared=id=>preparedIds.has(id);
+    reserveOnce.prepare=async id=>{checks.push(id);preparedIds.add(id);return true;};
+    startGlobalSniper({targetMeal:'CENA',targetDate,targetTime});
+  `,context);
+  await timers[0].callback();
+  assert.deepEqual(Array.from(vm.runInContext('checks',context)),['two','one']);
+  vm.runInContext(`
+    db.getAllUsers(false).push({id:'late',username:'late',role:'user',active:true,autoSniper:true});
+    db.getAdvanceReservations().push({alumnoCodigo:'late',fecha:targetDate,tipoComida:'CENA',status:'ACTIVA'});
+  `,context);
+  await timers[2].callback();
+  assert.deepEqual(Array.from(vm.runInContext('checks',context)),['two','one','late']);
+  context.Date=class extends Date { static now(){return target.getTime()-4000;} };
+  vm.runInContext(`
+    db.getAllUsers(false).push({id:'too-late',username:'too-late',role:'user',active:true,autoSniper:true});
+    db.getAdvanceReservations().push({alumnoCodigo:'too-late',fecha:targetDate,tipoComida:'CENA',status:'ACTIVA'});
+  `,context);
+  await timers[3].callback();
+  assert.deepEqual(Array.from(vm.runInContext('checks',context)),['two','one','late']);
+  assert.equal(timers.length,4,'No background preparation should be scheduled inside the last five seconds');
+  vm.runInContext('stopGlobalSniper(true)',context);
+});
+
 test('failed student authentication remains pending and starts sentinel recovery', async () => {
   const { context, intervals } = createBurstHarness();
   await vm.runInContext('executeMultiUserBurst()', context);
@@ -203,8 +285,8 @@ test('warmup and last-minute refresh use current enrollment and stop with the en
   );
   assert.equal(timers.length, 3);
   assert.ok(timers[0].delay >= 298000 && timers[0].delay <= 300000);
-  assert.equal(timers[1].delay - timers[0].delay, 240000);
-  assert.equal(timers[2].delay - timers[1].delay, 59750);
+  assert.equal(timers[1].delay - timers[0].delay, 210000);
+  assert.equal(timers[2].delay - timers[1].delay, 89750);
   await timers[0].callback();
   assert.equal(vm.runInContext('preparationCalls.length', context), 2);
   assert.equal(vm.runInContext('ticketPreflightCalls.length', context), 0);
@@ -221,7 +303,8 @@ test('warmup and last-minute refresh use current enrollment and stop with the en
   assert.equal(vm.runInContext('preparationCalls[4].id', context), 'late');
   assert.equal(vm.runInContext('preparationCalls[4].force', context), false);
   vm.runInContext('stopGlobalSniper(true)', context);
-  assert.ok([1, 2, 3].every((id) => cleared.includes(id)));
+  assert.ok([1, 3, 4].every((id) => cleared.includes(id)));
+  assert.equal(timers[3].delay, 10000);
 });
 
 test('tokens must cover opening, while a ready token does not wait for background verification', async () => {

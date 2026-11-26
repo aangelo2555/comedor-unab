@@ -194,8 +194,10 @@ async function fetchUnabResponse(url, options = {}, retryable = true) {
           upstreamFailures.delete(new URL(url).hostname);
         }
         return { ok: res.ok, status: res.status, data };
-      }, options.priority || 0, () => options.validatePreflight && !options.validatePreflight()
-        ? { ok: false, status: 409, data: { code: 'PREFLIGHT_STALE', message: 'Se requiere verificar nuevamente el ticket antes de enviar.' } } : undefined,
+      }, options.priority || 0, () => options.canProceed && !options.canProceed()
+        ? { ok: false, status: 409, data: { message: 'Solicitud cancelada o fuera de horario.' } }
+        : options.validatePreflight && !options.validatePreflight()
+          ? { ok: false, status: 409, data: { code: 'PREFLIGHT_STALE', message: 'Se requiere verificar nuevamente el ticket antes de enviar.' } } : undefined,
         options.method === 'POST' && url === 'https://comedor-api.unab.edu.pe/v1/reservas' ? options.openingBurst : undefined);
       if (attempt + 1 < attempts && (response.status === 429 || response.status >= 500)) continue;
       return response;
@@ -595,35 +597,52 @@ function startGlobalSniper(options = {}) {
   emitLog(`[FRANCOTIRADOR] Francotirador armado para ${globalSniper.targetMeal} del ${globalSniper.targetDate}. Hora programada: ${globalSniper.targetTime}.`, 'info');
   broadcastSSE('sniper-status', { ...globalSniper, sentinelActive: !!sentinelIntervalId });
 
-  // Prepare sessions before opening and recheck late arrivals one minute before it.
+  // Remote warmup starts five minutes ahead. Ticket preparation starts 90s ahead;
+  // repeat only missing preparations and stop background work 5s before opening.
   const warmupGeneration = engineGeneration;
   const warmupDate = globalSniper.targetDate;
   const warmupMeal = globalSniper.targetMeal;
   const isCurrentWarmup = () => engineGeneration === warmupGeneration && globalSniper.running && globalSniper.status === 'ARMED';
+  const canPrepare = () => isCurrentWarmup() && Date.now() < targetTs - 5000;
+  let warmupInFlight = false;
   async function warmSessions(verifyRemote) {
-    if (!isCurrentWarmup()) return;
-    const queue = db.getAdvanceReservations({ fecha: warmupDate, status: 'ACTIVA' })
-      .filter(item => ['TODAS', 'INTELIGENTE'].includes(warmupMeal) || item.tipoComida.toUpperCase() === warmupMeal);
-    const usernames = new Set(queue.map(item => item.alumnoCodigo));
-    const users = admittedStudents(db.getAllUsers(false)).filter(user => user.active && user.autoSniper && usernames.has(user.username));
-    emitLog(`[WARMUP] Preparando ${users.length} sesiones antes de ${warmupMeal}...`, 'info');
+    if (!canPrepare() || warmupInFlight) return;
+    warmupInFlight = true;
     try {
+      const queue = db.getAdvanceReservations({ fecha: warmupDate, status: 'ACTIVA' })
+        .filter(item => ['TODAS', 'INTELIGENTE'].includes(warmupMeal) || item.tipoComida.toUpperCase() === warmupMeal);
+      const usernames = new Set(queue.map(item => item.alumnoCodigo));
+      const users = admittedStudents(db.getAllUsers(false)).filter(user => user.active && user.autoSniper && usernames.has(user.username))
+        .sort((a, b) => compareQueue(
+          { premium: isPremium(a, warmupDate), registrationOrder: a.registrationOrder },
+          { premium: isPremium(b, warmupDate), registrationOrder: b.registrationOrder }
+        ));
+      emitLog(`[WARMUP] Preparando ${users.length} sesiones antes de ${warmupMeal}...`, 'info');
       let checked = 0;
       const prepareReservations = verifyRemote ? undefined : async (user, token) => {
         for (const advance of queue.filter(item => item.alumnoCodigo === user.username)) {
           const openingTs = Date.parse(`${advance.fecha}T${MEAL_CONFIGS[advance.tipoComida]?.horaInicio}-05:00`);
           if (Math.abs(openingTs - targetTs) > 1000) continue;
-          if (await reserveOnce.prepare(user.id, token, advance.fecha, advance.tipoComida, openingTs, { priority: 1, timeoutMs: 5000, canProceed: isCurrentWarmup })) checked++;
+          if (reserveOnce.isPrepared(user.id, token, advance.fecha, advance.tipoComida, openingTs) ||
+              await reserveOnce.prepare(user.id, token, advance.fecha, advance.tipoComida, openingTs, { priority: 1, timeoutMs: 5000, canProceed: canPrepare })) checked++;
         }
       };
-      const result = await prepareSessions(users, { getToken: getValidUnabToken, canProceed: isCurrentWarmup, targetTs, isExpired: isJwtExpired, verifyRemote, prepareReservations });
+      const result = await prepareSessions(users, { getToken: getValidUnabToken, canProceed: canPrepare, targetTs, isExpired: isJwtExpired, verifyRemote, prepareReservations });
       if (isCurrentWarmup() && !verifyRemote) emitLog(`[WARMUP] ${checked} comprobaciones de tickets listas para el primer envío de apertura.`, 'info');
       if (isCurrentWarmup()) emitLog(`[WARMUP] ${result.ready}/${result.total} sesiones preparadas con vigencia para la apertura.`, result.ready === result.total ? 'success' : 'warning');
     } catch (error) { emitLog('[WARMUP] Preparación pendiente. Se volverá a comprobar la sesión al abrir.', 'warning'); }
+    finally { warmupInFlight = false; }
   }
-  warmupTimerId = setTimeout(() => warmSessions(msUntilTarget > REFRESH_LEAD_MS), Math.max(0, msUntilTarget - WARMUP_LEAD_MS));
-  if (msUntilTarget > REFRESH_LEAD_MS) {
-    warmupRefreshTimerId = setTimeout(() => warmSessions(false), msUntilTarget - REFRESH_LEAD_MS);
+  async function refreshSessions() {
+    await warmSessions(false);
+    if (canPrepare()) warmupRefreshTimerId = setTimeout(refreshSessions, Math.min(10000, Math.max(1, targetTs - 5000 - Date.now())));
+  }
+  // On a late restart, spend the remaining time on tickets rather than a separate
+  // profile/eligibility pass that could overlap and delay final preparation.
+  const remoteWarmup = msUntilTarget > REFRESH_LEAD_MS + 60000;
+  warmupTimerId = setTimeout(() => remoteWarmup ? warmSessions(true) : refreshSessions(), Math.max(0, msUntilTarget - WARMUP_LEAD_MS));
+  if (remoteWarmup) {
+    warmupRefreshTimerId = setTimeout(refreshSessions, msUntilTarget - REFRESH_LEAD_MS);
   }
 
   // Trigger burst at target - leadTimeMs
@@ -1008,14 +1027,19 @@ async function executeMultiUserBurst() {
     }
 
     try {
-      // Rotate the probe so one unavailable account cannot block the whole queue.
-      const probeUser = activeCandidates[(attempts - 1) % activeCandidates.length];
-      const probeToken = await getValidUnabToken(probeUser, false, { priority: 1, skipProfile: true });
+      // A pending login must not delay discovery for students already ready to submit.
+      const readyProbes = activeCandidates.map(user => db.findUserById(user.id) || user)
+        .filter(user => user.active && user.autoSniper && user.legalConsent?.version === TERMS_VERSION && user.unabToken && !isJwtExpired(user.unabToken));
+      const probes = readyProbes.length ? readyProbes : activeCandidates;
+      const probeUser = probes[(attempts - 1) % probes.length];
+      const probeToken = await getValidUnabToken(probeUser, false, { priority: 4, skipProfile: true, timeoutMs: 3000, canProceed: isCurrentRun });
       if (!probeToken) {
         if (activeCandidates.every(user => authIssues.get(user.id)?.requiresLogin)) attempts = maxAttempts;
         return;
       }
-      const prog = await fetchComedorApi(`/programacion/me?date=${runDate}`, probeToken, { priority: 1 });
+      // A revoked probe rotates on the next tick; its login is recovered separately
+      // rather than holding discovery for every other ready student.
+      const prog = await fetchComedorApi(`/programacion/me?date=${runDate}`, probeToken, { priority: 4, timeoutMs: 3000, canProceed: isCurrentRun }, true);
       if (!isCurrentRun()) return;
       if (prog.ok && Array.isArray(prog.data?.data)) publicationChecks++; else publicationErrors++;
       if (prog.ok && Array.isArray(prog.data?.data) && prog.data.data.length > 0) {

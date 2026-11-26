@@ -1,0 +1,466 @@
+{
+  "generatedAt": "2026-11-26T21:04:09.600Z",
+  "commit": "4ccac702f9109b9642a5be3600b010ea0b9bb405",
+  "method": "Unmodified production server, real local HTTP sockets, 50 signed fictitious JWT identities, isolated storage",
+  "externalInstitutionRequests": 0,
+  "students": 50,
+  "leadSeconds": 35,
+  "ordinaryIntervalMs": 500,
+  "openingConcurrency": 50,
+  "storage": "PostgreSQL",
+  "limitations": [
+    "Local HTTP has no institutional TLS, WAN latency, firewall or production backend.",
+    "Provider capacity and failures are deliberate models, not measurements of UNAB.",
+    "Accounts start registered; this exercise targets session preparation and reservation dispatch, not browser registration."
+  ],
+  "scenarios": [
+    {
+      "summary": {
+        "scenario": "healthy",
+        "confirmed": 50,
+        "pending": 0,
+        "expectedConfirmable": 50,
+        "detectionAfterOpeningMs": 4,
+        "firstPostAfterDetectionMs": 11,
+        "initialUniquePOSTs": 50,
+        "initialClientStartSpanMs": 19.36,
+        "allFirstAttemptsSpanMs": 19.36,
+        "completionAfterOpeningMs": 419,
+        "providerPeakAcceptedPOSTs": 50,
+        "uniquePOSTIdentities": 50,
+        "authenticationRenewals": 0,
+        "invalidAuthenticationResponses": 0,
+        "identityMismatches": 0,
+        "repeatedPOSTsForExistingTickets": 0,
+        "totalPOSTs": 50,
+        "passwordHashCalls": 1,
+        "passwordHashCpuMs": 43,
+        "observedForMsAfterOpening": 702,
+        "completedWithinObservation": true
+      },
+      "invariantsPassed": true,
+      "errors": [],
+      "providerModel": {
+        "quota": 50,
+        "acceptedConcurrentLimit": 50,
+        "baseResponseMs": "200-350"
+      },
+      "faults": [],
+      "users": [
+        {
+          "subject": "SIM-001",
+          "premium": true,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-002",
+          "premium": true,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-003",
+          "premium": true,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-004",
+          "premium": true,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-005",
+          "premium": true,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-006",
+          "premium": true,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-007",
+          "premium": true,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-008",
+          "premium": true,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-009",
+          "premium": true,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-010",
+          "premium": true,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-011",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-012",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-013",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-014",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-015",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-016",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-017",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-018",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-019",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-020",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-021",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-022",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-023",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-024",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-025",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-026",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-027",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-028",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-029",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-030",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-031",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-032",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-033",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-034",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-035",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-036",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-037",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-038",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-039",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-040",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-041",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-042",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-043",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-044",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-045",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-046",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-047",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-048",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-049",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        },
+        {
+          "subject": "SIM-050",
+          "premium": false,
+          "attempts": 1,
+          "confirmed": true,
+          "remainsPending": false,
+          "loginRequired": false
+        }
+      ],
+      "applicationTiming": {
+        "detectedAt": "2026-11-26T22:00:00.004Z",
+        "firstPostDelayMs": 11,
+        "lastPostDelayMs": 30,
+        "dispatched": 50
+      },
+      "logTail": [
+        "[4:59:25 p. m.] [INFO] [WARMUP] Preparando 50 sesiones antes de CENA...",
+        "[4:59:49 p. m.] [INFO] [WARMUP] 50 comprobaciones de tickets listas para el primer envío de apertura.",
+        "[4:59:49 p. m.] [SUCCESS] [WARMUP] 50/50 sesiones preparadas con vigencia para la apertura.",
+        "[5:00:00 p. m.] [INFO] [LATENCIA] Primer POST iniciado 11 ms después de detectar programación; espera interna 8 ms.",
+        "[5:00:00 p. m.] [INFO] [LATENCIA] 50 POST iniciados: primero a 11 ms y último a 30 ms desde la detección."
+      ]
+    }
+  ]
+}

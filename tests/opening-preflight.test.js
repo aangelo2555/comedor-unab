@@ -35,7 +35,7 @@ test('expired, invalidated and changed-token proofs fall back to fresh ticket ve
     });
     setTime(base-60000);
     await reserve.prepare('student','token',date,'CENA',base);
-    setTime(scenario==='expired'?base+3000:base+1);
+    setTime(scenario==='expired'?base+4500:base+1);
     if(scenario==='invalidated')reserve.invalidate('student',date,'CENA');
     if(scenario==='stopped')reserve.clearPrepared();
     await reserve('student',scenario==='token-change'?'new-token':'token','dinner',date,'CENA',()=>true,scenario==='ordinary'?{}:{preparedOpeningTs:base});
@@ -48,7 +48,7 @@ test('a proof expiring inside the network queue is verified again without blindl
   const reserve=createReservationService(async(endpoint,token,options)=>{
     if(options?.method==='POST') {
       if(options.validatePreflight) {
-        setTime(base+3000);
+        setTime(base+4500);
         assert.equal(options.validatePreflight(),false);
         return {ok:false,status:409,data:{code:'PREFLIGHT_STALE'}};
       }
@@ -121,3 +121,46 @@ test('an HTTP 200 error with an empty ticket list cannot authorize a reservation
   const result=await reserve('student','token','dinner',date,'CENA');
   assert.equal(result.ok,false);
 });
+
+test('preparation 90 seconds early is reused at opening, but not across tokens or invalidation',()=>withClock(async setTime=>{
+  const methods=[];
+  const reserve=createReservationService(async(endpoint,token,options)=>{
+    methods.push(options?.method || 'GET');
+    return options?.method==='POST' ? {ok:true,data:{success:true,data:{id:'ticket'}}} : {ok:true,data:{data:[]}};
+  });
+  setTime(base-90000);
+  assert.equal(await reserve.prepare('student','token',date,'CENA',base),true);
+  setTime(base-10000);
+  assert.equal(reserve.isPrepared('student','token',date,'CENA',base),true);
+  assert.equal(reserve.isPrepared('student','other-token',date,'CENA',base),false);
+  assert.equal(reserve.isPrepared('other-student','token',date,'CENA',base),false);
+  setTime(base+1000);
+  await reserve('student','token','dinner',date,'CENA',()=>true,{preparedOpeningTs:base});
+  assert.deepEqual(methods,['GET','POST']);
+  assert.equal(reserve.isPrepared('student','token',date,'CENA',base),false);
+}));
+
+test('rolling preparation recognizes cancellation, clearing, and expired proof windows',()=>withClock(async setTime=>{
+  for (const action of ['cancel','clear','expire']) {
+    const reserve=createReservationService(async()=>({ok:true,data:{data:[]}}));
+    setTime(base-90000);
+    await reserve.prepare('student','token',date,'CENA',base);
+    if (action==='cancel') reserve.invalidate('student',date,'CENA');
+    if (action==='clear') reserve.clearPrepared();
+    if (action==='expire') setTime(base+4500);
+    assert.equal(reserve.isPrepared('student','token',date,'CENA',base),false,action);
+  }
+}));
+
+
+test('a slow publication response inside the four-second opening still uses a verified first POST',()=>withClock(async setTime=>{
+  const methods=[];
+  const reserve=createReservationService(async(endpoint,token,options)=>{
+    methods.push(options?.method || 'GET');
+    return options?.method==='POST'?{ok:true,data:{success:true,data:{id:'ticket'}}}:{ok:true,data:{data:[]}};
+  });
+  await reserve.prepare('student','token',date,'CENA',base);
+  setTime(base+2800);
+  await reserve('student','token','dinner',date,'CENA',()=>true,{preparedOpeningTs:base});
+  assert.deepEqual(methods,['GET','POST']);
+}));

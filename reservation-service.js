@@ -5,8 +5,8 @@ function createReservationService(callApi) {
   const prepared = new Map();
   const generations = new Map();
   let preparationEpoch = 0;
-  const proofLifetimeMs = 90000;
-  const openingWindowMs = 2500;
+  const proofLifetimeMs = 120000;
+  const openingWindowMs = 4000;
   const keyFor = (userId, date, meal) => JSON.stringify([userId, date, meal.toUpperCase()]);
   const proofValid = proof => proof && proof.epoch === preparationEpoch && Date.now() >= proof.openingTs && Date.now() <= proof.openingTs + openingWindowMs && Date.now() - proof.checkedAt <= proofLifetimeMs;
   function invalidate(userId, date, meal) {
@@ -134,11 +134,18 @@ function createReservationService(callApi) {
     }
   };
   reserveOnce.isSubmitting = (userId, date, meal) => submitting.has(keyFor(userId, date, meal));
+  reserveOnce.isPrepared = (userId, token, date, meal, openingTs) => {
+    const proof = prepared.get(keyFor(userId, date, meal));
+    const now = Date.now();
+    return Boolean(proof && proof.token === token && proof.openingTs === openingTs &&
+      proof.epoch === preparationEpoch && now <= openingTs + openingWindowMs &&
+      now >= proof.checkedAt && now - proof.checkedAt <= proofLifetimeMs);
+  };
   reserveOnce.invalidate = invalidate;
   reserveOnce.clearPrepared = () => { preparationEpoch++; prepared.clear(); generations.clear(); };
   reserveOnce.prepare = async (userId, token, date, meal, openingTs, options = {}) => {
     prune();
-    if (!Number.isFinite(openingTs) || Date.now() >= openingTs || openingTs - Date.now() > 65000 || (options.canProceed && !options.canProceed())) return false;
+    if (!Number.isFinite(openingTs) || Date.now() >= openingTs || openingTs - Date.now() > 95000 || (options.canProceed && !options.canProceed())) return false;
     const key = keyFor(userId, date, meal);
     if (pending.has(key)) return false;
     const generation = generations.get(key) || 0;

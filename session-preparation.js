@@ -1,6 +1,6 @@
 const { mapWithConcurrency } = require('./reservation-service');
 const WARMUP_LEAD_MS = 5 * 60 * 1000;
-const REFRESH_LEAD_MS = 60 * 1000;
+const REFRESH_LEAD_MS = 90 * 1000;
 const SESSION_RESERVATION_MARGIN_MS = 2 * 60 * 1000;
 const PUBLICATION_POLL_MS = 250;
 
@@ -25,7 +25,7 @@ async function prepareSessions(
     const token = await getToken(
       user,
       verifyRemote,
-      { skipProfile: true },
+      { skipProfile: true, canProceed, timeoutMs: 5000, priority: 1 },
       minimumValidityMs
     );
     const ready = Boolean(token && !isExpired(token, minimumValidityMs));
