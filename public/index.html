@@ -14,6 +14,16 @@
 
   <!-- VIEW 1: AUTHENTICATION SCREEN (LOGIN & AUTO-REGISTRO) -->
   <div id="view-login" class="login-view">
+    <div class="login-art" aria-hidden="true">
+      <svg viewBox="0 0 560 560" fill="none" focusable="false">
+        <circle cx="280" cy="280" r="222" fill="url(#plateLight)" stroke="white" stroke-opacity=".65"/>
+        <circle cx="280" cy="280" r="178" stroke="white" stroke-opacity=".7"/>
+        <circle cx="280" cy="280" r="163" stroke="white" stroke-opacity=".35"/>
+        <path d="M24 194v47a18 18 0 0 0 36 0v-47m-18 0v176m-18-150h36M516 194c-20 24-25 65 0 74v102m0-176v74" stroke="white" stroke-opacity=".6" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+        <path d="M450 70v20m-10-10h20M102 430v12m-6-6h12" stroke="white" stroke-width="2" stroke-linecap="round"/>
+        <defs><radialGradient id="plateLight" cx="0" cy="0" r="1" gradientTransform="translate(197 142) rotate(58) scale(460)" gradientUnits="userSpaceOnUse"><stop stop-color="#fffdf1" stop-opacity=".7"/><stop offset="1" stop-color="white" stop-opacity=".04"/></radialGradient></defs>
+      </svg>
+    </div>
     <div class="login-card">
       <div class="login-header">
         <p class="intro-brand">Mi Mesa</p>
@@ -82,9 +92,8 @@
       </div>
     </header>
 
-    <section id="studentEnrollment" class="student-enrollment" hidden aria-live="polite">
-      <strong id="studentEnrollmentPosition"></strong>
-      <span id="studentEnrollmentDetail"></span>
+    <section id="studentSessionNotice" class="reservation-recovery-notice student-session-notice" hidden aria-live="polite">
+      <span id="studentSessionMessage"></span>
       <button class="btn btn-secondary btn-sm" id="btnRefreshInstitutionalSession" type="button" hidden>Volver a iniciar sesión</button>
     </section>
 
@@ -355,7 +364,7 @@
         <p>Elige tu servicio y consulta tus pases.</p>
         <button class="btn btn-primary" id="btnPremiumOffer">Conocer Premium</button>
       </section>
-      <nav class="tabs-header">
+      <nav class="tabs-header" aria-label="Navegación del alumno">
         <button class="tab-link active" data-target="student-tab-meals">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
             <path d="M18 2v20M6 2v20M3 2v6a3 3 0 0 0 6 0V2M14 2v8a2 2 0 0 0 4 0V2"></path>

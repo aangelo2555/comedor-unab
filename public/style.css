@@ -1389,11 +1389,6 @@ body:not(.admin-session) .brand-logo { width: 30px; height: 34px; }
 
 #panel-student .tab-link { padding-left: 10px; padding-right: 10px; gap: 5px; }
 
-.student-enrollment { display: flex; flex-direction: column; gap: 4px; padding: 14px 18px; margin: 8px 0 12px; border: 1px solid #ffffff80; border-radius: 18px; background: #ffffff70; }
-.student-enrollment strong { font-size: 15px; }
-.student-enrollment span { font-size: 12px; line-height: 1.5; color: #294c6a; }
-.premium-session .student-enrollment { background: #f0f7ff; }
-
 .premium-benefits { padding-left: 1.25rem; margin: 1.25rem 0; }
 .premium-benefits li { margin-bottom: .75rem; line-height: 1.5; }
 #btnPremiumWhatsApp { text-align: center; text-decoration: none; }
@@ -1423,3 +1418,68 @@ body:not(.admin-session) .brand-logo { width: 30px; height: 34px; }
 .premium-plan-card { padding: 20px; border-radius: 22px; }
 .premium-plan-card h3 { font-size: 24px; margin: 10px 0; }
 .premium-booking-section > .premium-help { color: #d7e7f5; font-size: 14px; line-height: 1.5; }
+
+
+/* Student navigation always fits its container, including narrow phones. */
+#panel-student .tabs-header {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  width: 100%;
+  max-width: 580px;
+  gap: 4px;
+  overflow: visible;
+  border-radius: 28px;
+}
+#panel-student .tab-link {
+  min-width: 0;
+  justify-content: center;
+  padding: 12px 8px;
+  gap: 6px;
+  font-size: 13px;
+}
+#panel-student .tab-link svg { flex: 0 0 auto; }
+#panel-student .tab-link .badge { flex: 0 0 auto; padding: 2px 6px; font-size: 11px; }
+#panel-student .tab-link:focus-visible { outline: 2px solid #102538; outline-offset: 2px; }
+.student-session-notice { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; }
+@media (max-width: 420px) {
+  #panel-student .tab-link { flex-wrap: wrap; gap: 4px; padding: 10px 3px; font-size: 12px; line-height: 1.4; }
+  #panel-student .tab-link > svg { width: 100%; height: 18px; }
+}
+
+/* A quiet place at the table: light, porcelain rings and a fine sky texture. */
+.login-view { position: relative; isolation: isolate; overflow: clip; }
+.login-view::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background:
+    radial-gradient(ellipse at 82% 12%, #fff8df70, transparent 42%),
+    radial-gradient(ellipse at 6% 90%, #ffffffa0, transparent 38%);
+}
+.login-view::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: .18;
+  background-image: radial-gradient(#ffffff 1px, transparent 1px);
+  background-size: 22px 22px;
+  mask-image: linear-gradient(125deg, black, transparent 65%);
+}
+.login-art {
+  position: absolute;
+  z-index: -1;
+  width: clamp(460px, 64vw, 900px);
+  top: -150px;
+  right: -120px;
+  pointer-events: none;
+  transform: rotate(-18deg);
+}
+.login-art svg { display: block; width: 100%; height: auto; }
+@media (max-width: 767px) {
+  .login-art { width: 430px; top: -155px; right: -165px; opacity: .8; }
+  .login-view::before { background: radial-gradient(ellipse at 100% 0%, #fff8df65, transparent 48%), radial-gradient(ellipse at 0% 95%, #ffffffa0, transparent 40%); }
+}

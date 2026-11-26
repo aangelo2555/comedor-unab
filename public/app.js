@@ -165,7 +165,7 @@ function setPageTheme(color) {
 }
 
 function showLoginView() {
-  document.getElementById('studentEnrollment').hidden = true;
+  document.getElementById('studentSessionNotice').hidden = true;
   document.getElementById('btnRevokeAuthorization').hidden = true;
   eventStream?.close();
   eventStream = null;
@@ -192,7 +192,7 @@ function showAppView(user) {
 
   document.getElementById('topUserName').textContent = user.name || user.username;
   const roleBadge = document.getElementById('userRoleBadge');
-  document.getElementById('studentEnrollment').hidden = user.role === 'superadmin';
+  document.getElementById('studentSessionNotice').hidden = true;
   if (user.role !== 'superadmin') {
     renderEnrollment(user.enrollment);
     loadEnrollment();
@@ -1405,16 +1405,18 @@ function renderPremiumRequests(appointments) {
 }
 
 function renderEnrollment(value, sessionNeedsLogin = false, sessionState = null) {
-  if (!value) return;
-  document.getElementById('studentEnrollmentPosition').textContent = value.admitted
-    ? `Tu registro: ${value.position} de ${value.limit}`
-    : `Tu registro: ${value.position} · Cupo de ${value.limit} alumnos completo`;
-  document.getElementById('studentEnrollmentDetail').textContent = value.admitted
-    ? `${value.total} alumnos registrados. Premium tiene prioridad; en cada grupo se respeta el orden de registro.`
-    : 'Tu cuenta se conserva. Las reservas están disponibles para los primeros registros dentro del cupo.';
+  const notice = document.getElementById('studentSessionNotice');
+  const message = document.getElementById('studentSessionMessage');
+  const needsRecovery = sessionNeedsLogin || sessionState === 'RECOVERING';
+  notice.hidden = !needsRecovery && value?.admitted !== false;
   document.getElementById('btnRefreshInstitutionalSession').hidden = !sessionNeedsLogin;
-  if (sessionNeedsLogin) document.getElementById('studentEnrollmentDetail').textContent += ' Se necesita autenticar esta cuenta para recuperar la sesión institucional.';
-  else if (sessionState === 'RECOVERING') document.getElementById('studentEnrollmentDetail').textContent += ' Estamos renovando tu sesión automáticamente; tus solicitudes conservan su lugar.';
+  message.textContent = sessionNeedsLogin
+    ? 'Vuelve a ingresar para recuperar tu sesión institucional. Tus solicitudes conservan su lugar.'
+    : sessionState === 'RECOVERING'
+      ? 'Estamos renovando tu sesión automáticamente. Tus solicitudes conservan su lugar.'
+      : value?.admitted === false
+        ? 'El cupo de cuentas habilitadas está completo. Tu cuenta y tus solicitudes se conservan.'
+        : '';
 }
 
 async function loadEnrollment() {
